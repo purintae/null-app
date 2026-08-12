@@ -5,7 +5,7 @@
 
 import SwiftUI
 
-/// หน้าแรกยังว่างโดยตั้งใจ — โปรไฟล์เข้าถึงได้จากแท็บแล้ว ไม่ต้องมีปุ่มที่นี่
+/// หน้าแรกยังว่างโดยตั้งใจ — ทางเข้าโปรไฟล์อยู่บนแถบบน ไม่ใช่กลางหน้า
 struct HomeView: View {
     var body: some View {
         VStack(spacing: 12) {
@@ -23,6 +23,19 @@ struct HomeView: View {
         .padding()
         .frame(maxWidth: .infinity)
         .navigationTitle("Home")
+        #if !os(macOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    ProfileView()
+                } label: {
+                    Image(systemName: "person")
+                }
+                .accessibilityLabel("Profile")
+            }
+        }
     }
 }
 

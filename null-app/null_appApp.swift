@@ -17,23 +17,10 @@ struct null_appApp: App {
 
     var body: some Scene {
         WindowGroup {
-            // NavigationStack อยู่ข้างในแต่ละแท็บ ไม่ใช่ครอบ TabView
-            // เพื่อให้แต่ละแท็บมี navigation history และ toolbar ของตัวเอง
-            TabView {
-                Tab("Home", systemImage: "house") {
-                    NavigationStack {
-                        HomeView()
-                    }
-                }
-
-                Tab("Profile", systemImage: "person.crop.circle") {
-                    NavigationStack {
-                        ProfileView()
-                    }
-                }
+            // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
+            NavigationStack {
+                HomeView()
             }
-            // iPhone ได้ tab bar ล่างจอ ส่วน iPad/Mac/visionOS กลายเป็น sidebar
-            .tabViewStyle(.sidebarAdaptable)
             .environment(store)
             .preferredColorScheme(appearance.colorScheme)
         }
