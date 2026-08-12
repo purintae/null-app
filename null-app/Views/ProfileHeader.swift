@@ -13,7 +13,8 @@ struct ProfileHeader: View {
     var coverImage: Image?
 
     /// รวมพื้นที่ status bar กับแถบบนที่ cover ไหลขึ้นไปทับด้วย
-    private let bannerHeight: CGFloat = 170
+    /// เป็น static เพราะ ProfileView ต้องรู้ค่านี้เพื่อคำนวณว่าเลื่อนไปเท่าไรแล้ว cover ถึงพ้นแถบบน
+    static let bannerHeight: CGFloat = 170
     private let avatarSize: CGFloat = 84
     private let horizontalPadding: CGFloat = 16
 
@@ -33,14 +34,14 @@ struct ProfileHeader: View {
                 // ยืด cover ขึ้นไปข้างบนเท่ากับระยะที่ถูกดึง
                 // ไม่งั้นจะเห็นพื้นหลังขาวโผล่เหนือ cover ตอนดึงลง
                 cover
-                    .frame(height: bannerHeight + pulled)
+                    .frame(height: Self.bannerHeight + pulled)
                     .clipped()
                     .overlay(alignment: .top) { scrim }
                     .offset(y: -pulled)
             }
             // ความสูงในเลย์เอาต์คงที่เสมอ การยืดเกิดขึ้นแค่ตอนวาด
             // avatar กับเนื้อหาข้างล่างจึงไม่ขยับตาม
-            .frame(height: bannerHeight)
+            .frame(height: Self.bannerHeight)
             .overlay(alignment: .bottomLeading) {
                 ProfileAvatar(
                     image: avatarImage,

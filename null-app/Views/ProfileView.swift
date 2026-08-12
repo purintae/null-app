@@ -21,6 +21,15 @@ struct ProfileView: View {
     @State private var saveError: String?
     @State private var pendingSave: PendingSave?
 
+    /// จริงเมื่อ cover ยังอยู่ใต้แถบบน ซึ่งเป็นตอนที่ตัวหนังสือขาวอ่านออก
+    /// พอเลื่อนจน cover พ้นไป ใต้แถบบนกลายเป็นพื้นปกติ ต้องคืนแถบให้เป็นสีตามระบบ
+    /// ไม่งั้นจะได้ตัวหนังสือขาวบนพื้นขาว
+    @State private var coverIsBehindToolbar = true
+
+    /// cover สูงเท่านี้ ส่วนแถบบนกับ status bar กินพื้นที่บนสุดราว 100
+    /// เลื่อนเกินผลต่างนี้เมื่อไร ขอบล่างของ cover ก็พ้นแถบบน
+    private static let coverClearsToolbarAt = ProfileHeader.bannerHeight - 100
+
     private var name: String {
         let trimmed = store.profile.trimmedDisplayName
         return trimmed.isEmpty ? "No name yet" : trimmed
@@ -76,14 +85,20 @@ struct ProfileView: View {
         // .toolbarBackground(.hidden) ลบแค่พื้นแถบ ไม่ได้ลบ effect ตัวนี้
         // ที่นี่ไม่ต้องการ เพราะ cover เป็นภาพเต็มที่ตั้งใจให้เรียบ และเรามี scrim ของตัวเองอยู่แล้ว
         .scrollEdgeEffectHidden(true, for: .top)
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            geometry.contentOffset.y < Self.coverClearsToolbarAt
+        } action: { _, isBehind in
+            coverIsBehindToolbar = isBehind
+        }
         .navigationTitle("Profile")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
-        // พื้นแถบบนโปร่งเพื่อให้เห็น cover ทะลุขึ้นมา และบังคับให้ตัวหนังสือกับไอคอนเป็นสีขาว
-        // เพราะมันวางอยู่บน cover ไม่ใช่บนพื้นหลังปกติ
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbarColorScheme(.dark, for: .navigationBar)
+        // สลับตามตำแหน่งเลื่อน: อยู่บน cover ก็ทำพื้นแถบให้ใสและบังคับตัวหนังสือเป็นสีขาว
+        // พอ cover เลื่อนพ้นไปก็คืนทั้งสองอย่างให้ระบบจัดการ ไม่งั้นจะเหลือขาวบนขาว
+        .toolbarBackground(coverIsBehindToolbar ? .hidden : .automatic, for: .navigationBar)
+        .toolbarColorScheme(coverIsBehindToolbar ? .dark : nil, for: .navigationBar)
         #endif
+        .animation(.easeInOut(duration: 0.2), value: coverIsBehindToolbar)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 NavigationLink {
