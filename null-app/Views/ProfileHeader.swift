@@ -24,9 +24,20 @@ struct ProfileHeader: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            identityColor
-                .frame(height: bannerHeight)
-                .overlay(alignment: .bottomLeading) {
+            GeometryReader { geometry in
+                // ระยะที่ผู้ใช้ดึงเลยขอบบนลงมา — เป็นบวกเฉพาะตอน overscroll เท่านั้น
+                let pulled = max(0, geometry.frame(in: .scrollView).minY)
+
+                // ยืด banner ขึ้นไปข้างบนเท่ากับระยะที่ถูกดึง
+                // ไม่งั้นจะเห็นพื้นหลังขาวโผล่เหนือ cover ตอนดึงลง
+                identityColor
+                    .frame(height: bannerHeight + pulled)
+                    .offset(y: -pulled)
+            }
+            // ความสูงในเลย์เอาต์คงที่เสมอ การยืดเกิดขึ้นแค่ตอนวาด
+            // avatar กับเนื้อหาข้างล่างจึงไม่ขยับตาม
+            .frame(height: bannerHeight)
+            .overlay(alignment: .bottomLeading) {
                     InitialsAvatar(
                         initials: profile.initials,
                         diameter: avatarSize,
@@ -55,17 +66,23 @@ struct ProfileHeader: View {
     }
 }
 
+// ห่อด้วย ScrollView ให้ตรงกับที่ใช้จริง เพราะ .scrollView coordinate space
+// ต้องมี ScrollView เป็นบรรพบุรุษถึงจะวัดค่าได้ถูก
 #Preview("มีชื่อแล้ว") {
-    ProfileHeader(
-        profile: Profile(
-            displayName: "Purin Tae",
-            bio: "Building null-app",
-            usernameSuffix: "3Q6RDV",
-            createdAt: .now
-        )
-    ) {}
+    ScrollView {
+        ProfileHeader(
+            profile: Profile(
+                displayName: "Purin Tae",
+                bio: "Building null-app",
+                usernameSuffix: "3Q6RDV",
+                createdAt: .now
+            )
+        ) {}
+    }
 }
 
 #Preview("ยังไม่ตั้งชื่อ") {
-    ProfileHeader(profile: .empty) {}
+    ScrollView {
+        ProfileHeader(profile: .empty) {}
+    }
 }
