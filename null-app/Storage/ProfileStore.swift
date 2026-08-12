@@ -18,7 +18,21 @@ final class ProfileStore {
     /// และการทำแบบ async จะทำให้เห็นจอว่างแวบหนึ่งก่อนข้อมูลมา
     init(fileURL: URL = ProfileStore.defaultFileURL) {
         self.fileURL = fileURL
-        self.profile = ProfileStore.read(from: fileURL)
+
+        var loaded = ProfileStore.read(from: fileURL)
+
+        // สุ่ม suffix ให้ทันทีถ้ายังไม่มี แล้วเขียนลงดิสก์เดี๋ยวนั้นเลย ไม่รอผู้ใช้กด Save
+        // เพราะถ้ารอ การปิดแอปก่อนบันทึกจะทำให้สุ่มใหม่ทุกครั้งที่เปิด
+        // username ก็จะไม่นิ่ง ซึ่งขัดกับเหตุผลทั้งหมดที่มี suffix
+        //
+        // ถ้าเขียนพลาดที่นี่ ค่ายังอยู่ใน memory และจะถูกบันทึกตอน save ครั้งถัดไป
+        // ไม่ throw ออกไปเพราะการเปิดแอปไม่ควรล้มเหลวด้วยเรื่องนี้
+        if loaded.usernameSuffix.isEmpty {
+            loaded.usernameSuffix = Profile.makeUsernameSuffix()
+            try? ProfileStore.write(loaded, to: fileURL)
+        }
+
+        self.profile = loaded
     }
 
     /// ตั้งค่าใน memory ก่อน แล้วค่อยเขียนดิสก์

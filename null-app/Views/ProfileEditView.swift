@@ -28,6 +28,24 @@ struct ProfileEditView: View {
                 Section("Name") {
                     TextField("Display name", text: $draft.displayName)
                         .autocorrectionDisabled()
+
+                    if draft.hasUnsupportedNameCharacters {
+                        Label(
+                            "Use English letters, numbers, spaces, - or ' only",
+                            systemImage: "exclamationmark.triangle.fill"
+                        )
+                        .font(.caption)
+                        .foregroundStyle(Color.red)
+                    }
+                }
+
+                Section("Username") {
+                    Text(draft.username)
+                        .font(.body.monospaced())
+
+                    Text("Built from your name. The part after the dash is yours for good — it stays the same however often you rename.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
 
                 Section("Bio") {
@@ -73,5 +91,13 @@ struct ProfileEditView: View {
 }
 
 #Preview("มีข้อมูลแล้ว") {
-    ProfileEditView(profile: Profile(displayName: "Purin Tae", bio: "สวัสดีครับ")) { _ in }
+    ProfileEditView(
+        profile: Profile(displayName: "Purin Tae", bio: "สวัสดีครับ", usernameSuffix: "K7M4XQ")
+    ) { _ in }
+}
+
+#Preview("ชื่อที่ใช้ไม่ได้") {
+    ProfileEditView(
+        profile: Profile(displayName: "ปุริน แต้", bio: "", usernameSuffix: "K7M4XQ")
+    ) { _ in }
 }

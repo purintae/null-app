@@ -21,9 +21,16 @@ struct ProfileView: View {
         VStack(spacing: 16) {
             InitialsAvatar(initials: store.profile.initials)
 
-            Text(name)
-                .font(.title2.weight(.semibold))
-                .foregroundStyle(store.profile.trimmedDisplayName.isEmpty ? .secondary : .primary)
+            VStack(spacing: 4) {
+                Text(name)
+                    .font(.title2.weight(.semibold))
+                    .foregroundStyle(store.profile.trimmedDisplayName.isEmpty ? .secondary : .primary)
+
+                Text(store.profile.username)
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .textSelection(.enabled)
+            }
 
             if !store.profile.bio.isEmpty {
                 Text(store.profile.bio)
