@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Xcode user state — window layout, breakpoints, last-opened files, scheme ordering.
+# Per-developer and regenerated automatically; never useful in a diff.
+xcuserdata/
+*.xcuserstate
+
+# Build products
+build/
+DerivedData/
+
+# Swift Package Manager local state.
+# Package.resolved is intentionally NOT ignored — it pins dependency versions
+# and belongs in the repository for reproducible builds.
+.swiftpm/
+.build/
+
+# Archives and symbols
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# Xcode transient files
+*.hmap
+*.moved-aside
+
+# Claude Code — local-only session state
+.claude/settings.local.json
+.claude/worktrees/
