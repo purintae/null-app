@@ -9,9 +9,15 @@ import SwiftUI
 
 @main
 struct null_appApp: App {
+    /// สร้างครั้งเดียวตอนแอปเริ่ม การอ่านไฟล์เกิดขึ้นใน initializer
+    @State private var store = ProfileStore()
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            NavigationStack {
+                HomeView()
+            }
+            .environment(store)
         }
     }
 }
