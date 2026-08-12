@@ -20,13 +20,28 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
     /// ProfileStore จะเติมให้ตอนโหลด แต่ View ต้องไม่ถือว่ามีเสมอ
     var createdAt: Date?
 
+    /// เก็บแค่ *ชื่อไฟล์* ไม่ใช่ path เต็ม
+    /// path ของ container เปลี่ยนได้ทุกครั้งที่ติดตั้งแอปใหม่ ถ้าเก็บ path เต็มไว้
+    /// รูปจะหาไม่เจอทันทีหลังอัปเดต — ProfileStore เป็นคนประกอบ path ให้เอง
+    var avatarFileName: String?
+    var coverFileName: String?
+
     static let empty = Profile(displayName: "", bio: "", usernameSuffix: "")
 
-    init(displayName: String, bio: String, usernameSuffix: String = "", createdAt: Date? = nil) {
+    init(
+        displayName: String,
+        bio: String,
+        usernameSuffix: String = "",
+        createdAt: Date? = nil,
+        avatarFileName: String? = nil,
+        coverFileName: String? = nil
+    ) {
         self.displayName = displayName
         self.bio = bio
         self.usernameSuffix = usernameSuffix
         self.createdAt = createdAt
+        self.avatarFileName = avatarFileName
+        self.coverFileName = coverFileName
     }
 
     /// Decoder เขียนเองโดยตั้งใจ ห้ามลดกลับไปใช้ synthesized เฉยๆ
@@ -42,6 +57,8 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
         bio = try container.decodeIfPresent(String.self, forKey: .bio) ?? ""
         usernameSuffix = try container.decodeIfPresent(String.self, forKey: .usernameSuffix) ?? ""
         createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
+        avatarFileName = try container.decodeIfPresent(String.self, forKey: .avatarFileName)
+        coverFileName = try container.decodeIfPresent(String.self, forKey: .coverFileName)
     }
 
     static let displayNameLimit = 50

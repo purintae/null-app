@@ -5,14 +5,14 @@
 
 import SwiftUI
 
-/// Banner สีประจำตัว + avatar ที่เกยขอบล่างของ banner + ปุ่ม Edit
-/// รับ Profile เข้ามาอ่านอย่างเดียว และคืนเจตนาออกไปทาง closure
-/// จึงไม่รู้จัก ProfileStore และ preview ได้โดยไม่ต้องเตรียมอะไร
+/// Cover + avatar ที่เกยขอบล่างของ cover
+/// รับทุกอย่างเข้ามาอ่านอย่างเดียว ไม่รู้จัก ProfileStore จึง preview ได้โดยไม่ต้องเตรียมอะไร
 struct ProfileHeader: View {
     let profile: Profile
+    var avatarImage: Image?
+    var coverImage: Image?
 
-    /// รวมพื้นที่ status bar ที่ cover ไหลขึ้นไปทับด้วย
-    /// ส่วนที่มองเห็นใต้ status bar จึงเหลือราว 110
+    /// รวมพื้นที่ status bar กับแถบบนที่ cover ไหลขึ้นไปทับด้วย
     private let bannerHeight: CGFloat = 170
     private let avatarSize: CGFloat = 84
     private let horizontalPadding: CGFloat = 16
@@ -27,38 +27,68 @@ struct ProfileHeader: View {
                 // ระยะที่ผู้ใช้ดึงเลยขอบบนลงมา — เป็นบวกเฉพาะตอน overscroll เท่านั้น
                 let pulled = max(0, geometry.frame(in: .scrollView).minY)
 
-                // ยืด banner ขึ้นไปข้างบนเท่ากับระยะที่ถูกดึง
+                // ยืด cover ขึ้นไปข้างบนเท่ากับระยะที่ถูกดึง
                 // ไม่งั้นจะเห็นพื้นหลังขาวโผล่เหนือ cover ตอนดึงลง
-                identityColor
+                cover
                     .frame(height: bannerHeight + pulled)
+                    .clipped()
+                    .overlay(alignment: .top) { scrim }
                     .offset(y: -pulled)
             }
             // ความสูงในเลย์เอาต์คงที่เสมอ การยืดเกิดขึ้นแค่ตอนวาด
             // avatar กับเนื้อหาข้างล่างจึงไม่ขยับตาม
             .frame(height: bannerHeight)
             .overlay(alignment: .bottomLeading) {
-                    InitialsAvatar(
-                        initials: profile.initials,
-                        diameter: avatarSize,
-                        tint: identityColor
-                    )
-                    .overlay {
-                        // วงแหวนสีพื้นหลังทำให้ avatar แยกออกจาก banner ชัดเจน
-                        Circle().strokeBorder(.background, lineWidth: 4)
-                    }
-                    .offset(x: horizontalPadding, y: avatarSize / 2)
+                ProfileAvatar(
+                    image: avatarImage,
+                    initials: profile.initials,
+                    diameter: avatarSize,
+                    tint: identityColor
+                )
+                .overlay {
+                    // วงแหวนสีพื้นหลังทำให้ avatar แยกออกจาก cover ชัดเจน
+                    Circle().strokeBorder(.background, lineWidth: 4)
                 }
+                .offset(x: horizontalPadding, y: avatarSize / 2)
+            }
 
-            // กันที่ให้ครึ่งล่างของ avatar ที่ห้อยพ้น banner ลงมา
+            // กันที่ให้ครึ่งล่างของ avatar ที่ห้อยพ้น cover ลงมา
             Color.clear
                 .frame(height: avatarSize / 2)
+        }
+    }
+
+    @ViewBuilder
+    private var cover: some View {
+        if let coverImage {
+            coverImage
+                .resizable()
+                .scaledToFill()
+        } else {
+            identityColor
+        }
+    }
+
+    /// หัวข้อกับไอคอนบนแถบบนเป็นสีขาว ซึ่งอ่านได้เสมอบนสีที่เราคำนวณเอง (ความสว่างคงที่)
+    /// แต่รูปของผู้ใช้จะสว่างแค่ไหนก็ได้ — รูปหิมะจะกลืนตัวหนังสือขาวหายไปเลย
+    /// จึงใส่เฉพาะตอนมีรูป ไม่ใส่ทับสีพื้นที่คุมได้อยู่แล้ว
+    @ViewBuilder
+    private var scrim: some View {
+        if coverImage != nil {
+            LinearGradient(
+                colors: [.black.opacity(0.45), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .frame(height: 130)
+            .allowsHitTesting(false)
         }
     }
 }
 
 // ห่อด้วย ScrollView ให้ตรงกับที่ใช้จริง เพราะ .scrollView coordinate space
 // ต้องมี ScrollView เป็นบรรพบุรุษถึงจะวัดค่าได้ถูก
-#Preview("มีชื่อแล้ว") {
+#Preview("ยังไม่มีรูป") {
     ScrollView {
         ProfileHeader(
             profile: Profile(
