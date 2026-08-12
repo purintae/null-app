@@ -27,6 +27,7 @@ struct ProfileEditView: View {
             Form {
                 Section("Name") {
                     TextField("Display name", text: $draft.displayName)
+                        .autocorrectionDisabled()
                 }
 
                 Section("Bio") {
