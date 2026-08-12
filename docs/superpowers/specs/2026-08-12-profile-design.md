@@ -182,3 +182,25 @@ logic ที่มีเนื้อทั้งหมดถูกวางไ�
 
 การเพิ่มรูปโปรไฟล์จริงก็เช่นกัน — แก้ที่ `InitialsAvatar` และเพิ่มฟิลด์ใน `Profile`
 โดยหน้าอื่นไม่กระทบ
+
+---
+
+## การเปลี่ยนแปลงหลังส่งมอบ
+
+**2026-08-12 — เปลี่ยน navigation เป็น TabBar**
+
+เดิม `HomeView` มีปุ่ม "View Profile" ที่ push ไปหน้า Profile ตามที่อธิบายไว้ข้างบน
+ตอนนี้เปลี่ยนเป็น `TabView` สองแท็บแทน ผู้ใช้สลับระหว่าง Home กับ Profile ได้โดยตรง
+
+สิ่งที่เปลี่ยนจริง:
+
+- `null_appApp.swift` — `NavigationStack { HomeView }` กลายเป็น `TabView` ที่มีสองแท็บ
+  และ **`NavigationStack` ย้ายไปอยู่ข้างในแต่ละแท็บ** ไม่ใช่ครอบ `TabView`
+  เพื่อให้แต่ละแท็บมี navigation history และ toolbar ของตัวเอง
+  ถ้าเอา `NavigationStack` ครอบ `TabView` แทน ปุ่ม Edit ของหน้า Profile จะไปโผล่ตอนอยู่แท็บ Home ด้วย
+- `HomeView.swift` — ลบปุ่ม "View Profile" ออก เพราะซ้ำกับแท็บ หน้า Home จึงว่างจริง ๆ แล้ว
+- ใช้ `.tabViewStyle(.sidebarAdaptable)` เพื่อให้ iPhone ได้ tab bar ล่างจอ
+  ส่วน iPad, macOS และ visionOS กลายเป็น sidebar ซึ่งเป็นสำนวนของแต่ละแพลตฟอร์ม โดยไม่ต้องเขียน `#if os(...)`
+
+ส่วนที่เหลือของ spec นี้ยังถูกต้องทั้งหมด — `Profile`, `ProfileStore`, flow การแก้ไข,
+validation และการจัดการ error ไม่ถูกแตะเลย ไฟล์ที่ shipped อยู่ใต้ `null-app/` เป็นตัวจริงเสมอ

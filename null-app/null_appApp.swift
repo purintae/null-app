@@ -14,9 +14,23 @@ struct null_appApp: App {
 
     var body: some Scene {
         WindowGroup {
-            NavigationStack {
-                HomeView()
+            // NavigationStack อยู่ข้างในแต่ละแท็บ ไม่ใช่ครอบ TabView
+            // เพื่อให้แต่ละแท็บมี navigation history และ toolbar ของตัวเอง
+            TabView {
+                Tab("Home", systemImage: "house") {
+                    NavigationStack {
+                        HomeView()
+                    }
+                }
+
+                Tab("Profile", systemImage: "person.crop.circle") {
+                    NavigationStack {
+                        ProfileView()
+                    }
+                }
             }
+            // iPhone ได้ tab bar ล่างจอ ส่วน iPad/Mac/visionOS กลายเป็น sidebar
+            .tabViewStyle(.sidebarAdaptable)
             .environment(store)
         }
     }
