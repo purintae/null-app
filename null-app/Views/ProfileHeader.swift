@@ -17,6 +17,9 @@ struct ProfileHeader: View {
     private let avatarSize: CGFloat = 84
     private let horizontalPadding: CGFloat = 16
 
+    /// ต้องคลุมทั้ง status bar (~59) และแถบบน (~44) ให้พ้น แล้วเหลือระยะจางอีกหน่อย
+    private let scrimHeight: CGFloat = 150
+
     private var identityColor: Color {
         Color(hue: profile.bannerHue, saturation: 0.5, brightness: 0.7)
     }
@@ -75,12 +78,19 @@ struct ProfileHeader: View {
     @ViewBuilder
     private var scrim: some View {
         if coverImage != nil {
+            // ไล่สีเรียบ ๆ จากบนลงล่างไม่พอ เพราะความเข้มสูงสุดจะไปตกที่ y=0
+            // ส่วนหัวข้อกับฟันเฟืองอยู่ราว y=64 ซึ่งความเข้มสลายไปเกินครึ่งแล้ว
+            // จึงคงความเข้มไว้ตลอดช่วงที่มีแถบบนก่อน แล้วค่อยจางลงหลังจากนั้น
             LinearGradient(
-                colors: [.black.opacity(0.45), .clear],
+                stops: [
+                    .init(color: .black.opacity(0.55), location: 0),
+                    .init(color: .black.opacity(0.5), location: 0.6),
+                    .init(color: .clear, location: 1),
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .frame(height: 130)
+            .frame(height: scrimHeight)
             .allowsHitTesting(false)
         }
     }
