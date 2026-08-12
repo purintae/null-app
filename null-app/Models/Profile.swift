@@ -15,12 +15,18 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
     /// ค่าว่างหมายถึง "ยังไม่เคยสุ่ม" ซึ่ง ProfileStore จะจัดการให้ตอนโหลด
     var usernameSuffix: String
 
+    /// วันที่โปรไฟล์นี้เกิดขึ้น ตั้งครั้งเดียวพร้อม usernameSuffix แล้วไม่เปลี่ยนอีก
+    /// เป็น optional เพราะไฟล์ที่บันทึกไว้ก่อนฟีเจอร์นี้ไม่มีค่านี้จริง ๆ
+    /// ProfileStore จะเติมให้ตอนโหลด แต่ View ต้องไม่ถือว่ามีเสมอ
+    var createdAt: Date?
+
     static let empty = Profile(displayName: "", bio: "", usernameSuffix: "")
 
-    init(displayName: String, bio: String, usernameSuffix: String = "") {
+    init(displayName: String, bio: String, usernameSuffix: String = "", createdAt: Date? = nil) {
         self.displayName = displayName
         self.bio = bio
         self.usernameSuffix = usernameSuffix
+        self.createdAt = createdAt
     }
 
     /// Decoder เขียนเองโดยตั้งใจ ห้ามลดกลับไปใช้ synthesized เฉยๆ
@@ -35,6 +41,7 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
         displayName = try container.decodeIfPresent(String.self, forKey: .displayName) ?? ""
         bio = try container.decodeIfPresent(String.self, forKey: .bio) ?? ""
         usernameSuffix = try container.decodeIfPresent(String.self, forKey: .usernameSuffix) ?? ""
+        createdAt = try container.decodeIfPresent(Date.self, forKey: .createdAt)
     }
 
     static let displayNameLimit = 50
@@ -69,6 +76,30 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
     /// handle ที่แสดงให้ผู้ใช้เห็น เช่น "@purintae-K7M4XQ"
     var username: String {
         usernameSuffix.isEmpty ? "@\(usernameSlug)" : "@\(usernameSlug)-\(usernameSuffix)"
+    }
+
+    // MARK: - Identity colour
+
+    /// สีประจำโปรไฟล์ที่คำนวณจาก suffix ด้วย djb2 hash
+    /// suffix ถาวรอยู่แล้ว สีจึงถาวรตามไปด้วยโดยไม่ต้องเก็บข้อมูลเพิ่ม
+    /// คืนค่าเป็น hue 0...1 ให้ View เอาไปประกอบเป็นสีเอง — model ไม่ import SwiftUI
+    var bannerHue: Double {
+        guard !usernameSuffix.isEmpty else { return 0.58 }
+
+        var hash: UInt64 = 5381
+        for byte in usernameSuffix.utf8 {
+            hash = (hash &* 33) &+ UInt64(byte)
+        }
+        return Double(hash % 360) / 360
+    }
+
+    // MARK: - Joined date
+
+    /// เช่น "August 2026" — คืน nil เมื่อไม่รู้จริง ๆ เพื่อให้ View ซ่อนบรรทัดนั้นไปเลย
+    /// ดีกว่าเดาวันแล้วแสดงข้อมูลที่ไม่จริง
+    var joinedText: String? {
+        guard let createdAt else { return nil }
+        return createdAt.formatted(.dateTime.month(.wide).year())
     }
 
     // MARK: - Display

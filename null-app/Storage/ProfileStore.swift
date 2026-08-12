@@ -21,14 +21,27 @@ final class ProfileStore {
 
         var loaded = ProfileStore.read(from: fileURL)
 
-        // สุ่ม suffix ให้ทันทีถ้ายังไม่มี แล้วเขียนลงดิสก์เดี๋ยวนั้นเลย ไม่รอผู้ใช้กด Save
-        // เพราะถ้ารอ การปิดแอปก่อนบันทึกจะทำให้สุ่มใหม่ทุกครั้งที่เปิด
-        // username ก็จะไม่นิ่ง ซึ่งขัดกับเหตุผลทั้งหมดที่มี suffix
+        // เติมค่าที่เกิดครั้งเดียวแล้วอยู่ถาวรให้ทันที แล้วเขียนลงดิสก์เดี๋ยวนั้นเลย
+        // ไม่รอผู้ใช้กด Save เพราะถ้ารอ การปิดแอปก่อนบันทึกจะทำให้สุ่มใหม่ทุกครั้งที่เปิด
+        // username กับสีประจำตัวก็จะไม่นิ่ง ซึ่งขัดกับเหตุผลทั้งหมดที่มีค่าพวกนี้
+        //
+        // ตรวจทีละค่าแยกกัน เพราะไฟล์ที่บันทึกไว้ระหว่างทางอาจมี suffix แล้วแต่ยังไม่มี createdAt
         //
         // ถ้าเขียนพลาดที่นี่ ค่ายังอยู่ใน memory และจะถูกบันทึกตอน save ครั้งถัดไป
         // ไม่ throw ออกไปเพราะการเปิดแอปไม่ควรล้มเหลวด้วยเรื่องนี้
+        var needsSeeding = false
+
         if loaded.usernameSuffix.isEmpty {
             loaded.usernameSuffix = Profile.makeUsernameSuffix()
+            needsSeeding = true
+        }
+
+        if loaded.createdAt == nil {
+            loaded.createdAt = Date()
+            needsSeeding = true
+        }
+
+        if needsSeeding {
             try? ProfileStore.write(loaded, to: fileURL)
         }
 
@@ -57,9 +70,12 @@ final class ProfileStore {
     /// ทุกความล้มเหลวของการอ่านแปลงเป็นค่าว่าง — ไม่มีไฟล์คือเรื่องปกติของการเปิดครั้งแรก
     /// ส่วนไฟล์เสียก็ไม่ควรทำให้แอปเปิดไม่ขึ้น
     nonisolated static func read(from url: URL) -> Profile {
+        let decoder = JSONDecoder()
+        decoder.dateDecodingStrategy = .iso8601
+
         guard
             let data = try? Data(contentsOf: url),
-            let decoded = try? JSONDecoder().decode(Profile.self, from: data)
+            let decoded = try? decoder.decode(Profile.self, from: data)
         else {
             return .empty
         }
@@ -72,7 +88,12 @@ final class ProfileStore {
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
-        let data = try JSONEncoder().encode(profile)
+        // ISO8601 แทนตัวเลข timestamp เพื่อให้เปิดไฟล์อ่านเองแล้วเข้าใจได้
+        // encoder กับ decoder ต้องใช้กลยุทธ์เดียวกันเสมอ ไม่งั้นอ่านกลับไม่ออก
+        let encoder = JSONEncoder()
+        encoder.dateEncodingStrategy = .iso8601
+
+        let data = try encoder.encode(profile)
         try data.write(to: url, options: .atomic)
     }
 }

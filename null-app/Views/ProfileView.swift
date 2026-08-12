@@ -18,34 +18,42 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            InitialsAvatar(initials: store.profile.initials)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 0) {
+                ProfileHeader(profile: store.profile) { isEditing = true }
 
-            VStack(spacing: 4) {
-                Text(name)
-                    .font(.title2.weight(.semibold))
-                    .foregroundStyle(store.profile.trimmedDisplayName.isEmpty ? .secondary : .primary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(name)
+                        .font(.title2.weight(.bold))
+                        .foregroundStyle(store.profile.trimmedDisplayName.isEmpty ? .secondary : .primary)
 
-                Text(store.profile.username)
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .textSelection(.enabled)
+                    Text(store.profile.username)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+
+                    if !store.profile.bio.isEmpty {
+                        Text(store.profile.bio)
+                            .font(.body)
+                            .padding(.top, 6)
+                    }
+
+                    if let joined = store.profile.joinedText {
+                        Label("Joined \(joined)", systemImage: "calendar")
+                            .font(.footnote)
+                            .foregroundStyle(.tertiary)
+                            .padding(.top, 6)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 12)
             }
-
-            if !store.profile.bio.isEmpty {
-                Text(store.profile.bio)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
         }
-        .padding()
-        .frame(maxWidth: .infinity)
         .navigationTitle("Profile")
-        .toolbar {
-            Button("Edit") { isEditing = true }
-        }
+        #if !os(macOS)
+        // banner กินพื้นที่บนสุดอยู่แล้ว หัวข้อใหญ่จะไปแย่งที่และพูดซ้ำ
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .sheet(isPresented: $isEditing) {
             ProfileEditView(profile: store.profile) { updated in
                 Task { await save(updated) }

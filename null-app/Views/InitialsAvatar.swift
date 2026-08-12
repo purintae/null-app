@@ -10,15 +10,20 @@ import SwiftUI
 struct InitialsAvatar: View {
     let initials: String
     var diameter: CGFloat = 96
+    var tint: Color = .accentColor
 
     var body: some View {
         Circle()
-            .fill(Color.accentColor.opacity(0.15))
+            // ทึบแสงโดยตั้งใจ — วงกลมนี้วางทับ banner สี ถ้าพื้นโปร่งจะเห็นสี banner ทะลุขึ้นมา
+            .fill(.background)
+            .overlay {
+                Circle().fill(tint.opacity(0.18))
+            }
             .frame(width: diameter, height: diameter)
             .overlay {
                 Text(initials)
                     .font(.system(size: diameter * 0.36, weight: .semibold, design: .rounded))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(tint)
             }
             // ชื่อถูกอ่านออกเสียงจาก Text ที่อยู่ข้าง ๆ อยู่แล้ว
             .accessibilityHidden(true)
@@ -29,7 +34,7 @@ struct InitialsAvatar: View {
     VStack(spacing: 20) {
         InitialsAvatar(initials: "PT")
         InitialsAvatar(initials: "?")
-        InitialsAvatar(initials: "A", diameter: 48)
+        InitialsAvatar(initials: "A", diameter: 48, tint: .purple)
     }
     .padding()
 }
