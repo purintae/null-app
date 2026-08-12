@@ -6,7 +6,7 @@
 import Foundation
 
 /// โปรไฟล์ของผู้ใช้ มีอยู่ชุดเดียวในแอป
-struct Profile: Codable, Equatable, Sendable {
+nonisolated struct Profile: Codable, Equatable, Sendable {
     var displayName: String
     var bio: String
 

@@ -12,6 +12,7 @@ final class ProfileStore {
     private(set) var profile: Profile
 
     private let fileURL: URL
+    private var writeTask: Task<Void, Error>?
 
     /// อ่านไฟล์แบบ synchronous โดยตั้งใจ — ไฟล์เล็กมาก การอ่านเร็วกว่าหนึ่งเฟรม
     /// และการทำแบบ async จะทำให้เห็นจอว่างแวบหนึ่งก่อนข้อมูลมา
@@ -26,9 +27,13 @@ final class ProfileStore {
         profile = newProfile
 
         let url = fileURL
-        try await Task.detached(priority: .utility) {
+        let previous = writeTask
+        let task = Task.detached(priority: .utility) {
+            _ = try? await previous?.value
             try ProfileStore.write(newProfile, to: url)
-        }.value
+        }
+        writeTask = task
+        try await task.value
     }
 
     static var defaultFileURL: URL {
