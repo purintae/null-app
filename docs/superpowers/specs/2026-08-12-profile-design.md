@@ -285,3 +285,27 @@ avatar กับเนื้อหาข้างล่างจึงไม่�
 
 `#Preview` ของ `ProfileHeader` ต้องห่อด้วย `ScrollView` ด้วย เพราะ `.scrollView`
 coordinate space ต้องมี ScrollView เป็นบรรพบุรุษถึงจะวัดค่าได้ถูก
+
+**2026-08-12 — แถบบน ปุ่มคู่ QR และหน้า Settings**
+
+จัดหน้า Profile ใหม่ตามภาพตัวอย่างที่ผู้ใช้ให้มา:
+
+- **แถบบนกลับมา** แต่ทำพื้นโปร่งด้วย `.toolbarBackground(.hidden)` และบังคับ
+  `.toolbarColorScheme(.dark)` เพื่อให้หัวข้อกับไอคอนเป็นสีขาวบน cover
+  ทั้งสองตัวเป็น iOS เท่านั้น ต้องกันด้วย `#if !os(macOS)`
+- **ปุ่ม Edit ย้ายลงล่าง** เป็นปุ่มคู่กว้างเท่ากันร่วมกับ My QR Code
+  `ProfileHeader` จึงไม่รับ `onEdit` อีกต่อไป เหลือหน้าที่เดียวคือแสดง cover กับ avatar
+- SwiftUI ไม่มีสไตล์ปุ่มแบบเส้นขอบ มีแค่ `.bordered` ที่เป็นพื้นทึบอ่อน
+  จึงเขียน `ButtonStyle` เองเพื่อให้ตรงแบบ และยังคงการตอบสนองตอนกดผ่าน `isPressed`
+
+**QR** สร้างด้วย `CIFilter.qrCodeGenerator` แล้วแปลงเป็น `CGImage` ไม่ใช่ `UIImage`
+เพราะ `Image(decorative:scale:)` รับ `CGImage` ได้ทุกแพลตฟอร์ม ไม่ต้องแยกโค้ด UIKit/AppKit
+ต้องขยายภาพก่อนแปลงเป็น bitmap และใส่ `.interpolation(.none)` ไม่งั้นขอบเบลอจนสแกนพลาด
+`UsernameQRSheet` รับ username เป็นสตริง ไม่รู้จัก Profile หรือ store
+
+**Settings** แยกเป็น section ตั้งแต่แรกเพื่อรองรับกลุ่ม Account (เปลี่ยนรหัสผ่าน ออกจากระบบ)
+ที่จะเข้ามาทีหลังโดยไม่ต้องรื้อโครง
+
+- Appearance เก็บใน `UserDefaults` ผ่าน `@AppStorage` — ที่ถูกต้องของ *การตั้งค่า*
+  ต่างจากโปรไฟล์ซึ่งเป็น *เนื้อหาของผู้ใช้* จึงอยู่ในไฟล์ JSON
+- About อ่านเลขเวอร์ชันจาก bundle ไม่ hard-code

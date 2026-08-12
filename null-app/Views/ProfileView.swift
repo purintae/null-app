@@ -9,6 +9,7 @@ struct ProfileView: View {
     @Environment(ProfileStore.self) private var store
 
     @State private var isEditing = false
+    @State private var isShowingQRCode = false
     @State private var saveError: String?
     @State private var pendingSave: Profile?
 
@@ -20,7 +21,7 @@ struct ProfileView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
-                ProfileHeader(profile: store.profile) { isEditing = true }
+                ProfileHeader(profile: store.profile)
 
                 VStack(alignment: .leading, spacing: 6) {
                     Text(name)
@@ -44,6 +45,12 @@ struct ProfileView: View {
                             .foregroundStyle(.tertiary)
                             .padding(.top, 6)
                     }
+
+                    ProfileActionButtons(
+                        onShowQRCode: { isShowingQRCode = true },
+                        onEdit: { isEditing = true }
+                    )
+                    .padding(.top, 14)
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -55,15 +62,28 @@ struct ProfileView: View {
         .navigationTitle("Profile")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
-        // ซ่อนแถบบนทั้งแถบเพื่อให้ cover ไหลขึ้นไปชนขอบจอได้จริง
-        // ไม่เสียการนำทางอะไร เพราะหน้านี้เป็นรากของแท็บ ไม่มีปุ่มย้อนกลับอยู่แล้ว
-        // และแท็บด้านล่างก็บอกอยู่แล้วว่ากำลังอยู่หน้าไหน
-        .toolbar(.hidden, for: .navigationBar)
+        // พื้นแถบบนโปร่งเพื่อให้เห็น cover ทะลุขึ้นมา และบังคับให้ตัวหนังสือกับไอคอนเป็นสีขาว
+        // เพราะมันวางอยู่บนสีเข้มของ cover ไม่ใช่บนพื้นหลังปกติ
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         #endif
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                NavigationLink {
+                    SettingsView()
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+                .accessibilityLabel("Settings")
+            }
+        }
         .sheet(isPresented: $isEditing) {
             ProfileEditView(profile: store.profile) { updated in
                 Task { await save(updated) }
             }
+        }
+        .sheet(isPresented: $isShowingQRCode) {
+            UsernameQRSheet(username: store.profile.username)
         }
         .alert(
             "Couldn't save",

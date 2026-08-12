@@ -10,7 +10,6 @@ import SwiftUI
 /// จึงไม่รู้จัก ProfileStore และ preview ได้โดยไม่ต้องเตรียมอะไร
 struct ProfileHeader: View {
     let profile: Profile
-    let onEdit: () -> Void
 
     /// รวมพื้นที่ status bar ที่ cover ไหลขึ้นไปทับด้วย
     /// ส่วนที่มองเห็นใต้ status bar จึงเหลือราว 110
@@ -50,18 +49,9 @@ struct ProfileHeader: View {
                     .offset(x: horizontalPadding, y: avatarSize / 2)
                 }
 
-            // แถวนี้มีหน้าที่สองอย่าง: วางปุ่ม Edit และกันที่ให้ครึ่งล่างของ avatar
-            HStack {
-                Spacer()
-
-                Button("Edit", action: onEdit)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .clipShape(.capsule)
-            }
-            .padding(.horizontal, horizontalPadding)
-            .padding(.top, 10)
-            .frame(height: avatarSize / 2, alignment: .top)
+            // กันที่ให้ครึ่งล่างของ avatar ที่ห้อยพ้น banner ลงมา
+            Color.clear
+                .frame(height: avatarSize / 2)
         }
     }
 }
@@ -77,12 +67,12 @@ struct ProfileHeader: View {
                 usernameSuffix: "3Q6RDV",
                 createdAt: .now
             )
-        ) {}
+        )
     }
 }
 
 #Preview("ยังไม่ตั้งชื่อ") {
     ScrollView {
-        ProfileHeader(profile: .empty) {}
+        ProfileHeader(profile: .empty)
     }
 }

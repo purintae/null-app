@@ -12,6 +12,9 @@ struct null_appApp: App {
     /// สร้างครั้งเดียวตอนแอปเริ่ม การอ่านไฟล์เกิดขึ้นใน initializer
     @State private var store = ProfileStore()
 
+    /// ธีมที่ผู้ใช้เลือกใน Settings ต้องอ่านที่รากเพื่อครอบทั้งแอป
+    @AppStorage("appearance") private var appearance: AppearanceSetting = .system
+
     var body: some Scene {
         WindowGroup {
             // NavigationStack อยู่ข้างในแต่ละแท็บ ไม่ใช่ครอบ TabView
@@ -32,6 +35,7 @@ struct null_appApp: App {
             // iPhone ได้ tab bar ล่างจอ ส่วน iPad/Mac/visionOS กลายเป็น sidebar
             .tabViewStyle(.sidebarAdaptable)
             .environment(store)
+            .preferredColorScheme(appearance.colorScheme)
         }
     }
 }
