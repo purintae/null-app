@@ -49,10 +49,16 @@ struct ProfileView: View {
                 .padding(.top, 12)
             }
         }
+        // ScrollView เป็นตัวที่กัน safe area ไว้ ไม่ใช่ตัว banner
+        // ต้องปล่อยที่นี่ cover ถึงจะไหลขึ้นไปชนขอบบนสุดของจอได้จริง
+        .ignoresSafeArea(edges: .top)
         .navigationTitle("Profile")
         #if !os(macOS)
-        // banner กินพื้นที่บนสุดอยู่แล้ว หัวข้อใหญ่จะไปแย่งที่และพูดซ้ำ
         .navigationBarTitleDisplayMode(.inline)
+        // ซ่อนแถบบนทั้งแถบเพื่อให้ cover ไหลขึ้นไปชนขอบจอได้จริง
+        // ไม่เสียการนำทางอะไร เพราะหน้านี้เป็นรากของแท็บ ไม่มีปุ่มย้อนกลับอยู่แล้ว
+        // และแท็บด้านล่างก็บอกอยู่แล้วว่ากำลังอยู่หน้าไหน
+        .toolbar(.hidden, for: .navigationBar)
         #endif
         .sheet(isPresented: $isEditing) {
             ProfileEditView(profile: store.profile) { updated in

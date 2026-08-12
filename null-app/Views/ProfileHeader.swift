@@ -12,7 +12,9 @@ struct ProfileHeader: View {
     let profile: Profile
     let onEdit: () -> Void
 
-    private let bannerHeight: CGFloat = 120
+    /// รวมพื้นที่ status bar ที่ cover ไหลขึ้นไปทับด้วย
+    /// ส่วนที่มองเห็นใต้ status bar จึงเหลือราว 110
+    private let bannerHeight: CGFloat = 170
     private let avatarSize: CGFloat = 84
     private let horizontalPadding: CGFloat = 16
 
