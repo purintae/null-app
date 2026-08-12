@@ -71,6 +71,11 @@ struct ProfileView: View {
         // ScrollView เป็นตัวที่กัน safe area ไว้ ไม่ใช่ตัว cover
         // ต้องปล่อยที่นี่ cover ถึงจะไหลขึ้นไปชนขอบบนสุดของจอได้จริง
         .ignoresSafeArea(edges: .top)
+        // iOS 26 วาด scroll edge effect ให้เองที่ขอบบน เป็นแถบไล่สีจาง ๆ
+        // เพื่อให้เนื้อหาที่ลอดใต้แถบบนยังอ่านออก
+        // .toolbarBackground(.hidden) ลบแค่พื้นแถบ ไม่ได้ลบ effect ตัวนี้
+        // ที่นี่ไม่ต้องการ เพราะ cover เป็นภาพเต็มที่ตั้งใจให้เรียบ และเรามี scrim ของตัวเองอยู่แล้ว
+        .scrollEdgeEffectHidden(true, for: .top)
         .navigationTitle("Profile")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
