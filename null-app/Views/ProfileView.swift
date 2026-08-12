@@ -10,6 +10,7 @@ struct ProfileView: View {
 
     @State private var isEditing = false
     @State private var saveError: String?
+    @State private var pendingSave: Profile?
 
     private var name: String {
         let trimmed = store.profile.trimmedDisplayName
@@ -51,6 +52,11 @@ struct ProfileView: View {
             ),
             presenting: saveError
         ) { _ in
+            if let pendingSave {
+                Button("Try Again") {
+                    Task { await save(pendingSave) }
+                }
+            }
             Button("OK", role: .cancel) { saveError = nil }
         } message: { message in
             Text(message)
@@ -58,10 +64,13 @@ struct ProfileView: View {
     }
 
     /// ค่าใน store ถูกตั้งไปแล้วแม้เขียนดิสก์พลาด ผู้ใช้จึงยังเห็นสิ่งที่เพิ่งพิมพ์
+    /// ถ้าเขียนพลาด เก็บค่าไว้ใน pendingSave เพื่อให้กด Try Again ได้โดยไม่ต้องเปิดฟอร์มใหม่
     private func save(_ updated: Profile) async {
         do {
             try await store.update(updated)
+            pendingSave = nil
         } catch {
+            pendingSave = updated
             saveError = error.localizedDescription
         }
     }
