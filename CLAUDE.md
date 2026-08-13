@@ -120,6 +120,8 @@ Each of these compiled cleanly and looked correct.
 
 **`information_schema` hides cross-schema foreign keys** from the MCP role. Query `pg_constraint` instead, or you will conclude `profiles` has no foreign key.
 
+**The macOS sandbox blames DNS when it blocks the network.** `ENABLE_APP_SANDBOX = YES` is on for this target, so the macOS build reaches the network only if `ENABLE_OUTGOING_NETWORK_CONNECTIONS = YES` puts `com.apple.security.network.client` into the generated entitlements. Without it every request fails as `NSURLErrorCannotFindHost (-1003)` — surfaced to the user as "A server with the specified hostname could not be found" — while `curl` to the same host from the same Mac succeeds. iOS has no such gate, so the simulator will never show this. Read the shipped entitlements, not the build setting: `codesign -d --entitlements - --xml <path>.app | plutil -convert xml1 -o - -`.
+
 ## Design docs
 
 `docs/superpowers/specs/` holds the design decisions and, importantly, the rejected alternatives with reasons. `docs/superpowers/plans/` holds the implementation plans. Read the relevant spec before changing behaviour it covers — several choices that look arbitrary (name-only signup, database-owned suffix, no Recovery Key) are deliberate and argued there.
