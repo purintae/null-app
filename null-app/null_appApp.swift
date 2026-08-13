@@ -23,18 +23,32 @@ struct null_appApp: App {
                     ProgressView()
 
                 case .signedOut:
-                    SignUpView(session: session)
+                    signUpScreen
 
                 case .signedIn:
-                    // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
-                    NavigationStack {
-                        HomeView()
+                    if profileStore.needsProfile {
+                        // สมัครค้างกลางทาง — มีบัญชีแล้วแต่ยังไม่มีโปรไฟล์
+                        // ให้กรอกชื่อเพื่อสร้างแถวให้ครบ ไม่ใช่สร้างบัญชีใหม่ซ้อน
+                        signUpScreen
+                    } else {
+                        // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
+                        NavigationStack {
+                            HomeView()
+                        }
+                        .environment(profileStore)
+                        .task { await profileStore.refresh() }
                     }
-                    .environment(profileStore)
-                    .task { await profileStore.refresh() }
                 }
             }
             .preferredColorScheme(appearance.colorScheme)
+        }
+    }
+
+    /// ใช้ร่วมกันทั้งการสมัครใหม่และการกู้คืนบัญชีที่ไม่มีโปรไฟล์
+    /// ทั้งสองเส้นทางจบด้วยการมีแถวใน profiles จึงต้อง refresh เหมือนกัน
+    private var signUpScreen: some View {
+        SignUpView(session: session) {
+            await profileStore.refresh()
         }
     }
 }

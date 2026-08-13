@@ -406,3 +406,12 @@ ScrollView เลื่อนได้เสมอแม้เนื้อหา
 และเข้มตอนเลื่อนพ้น
 
 empty state ของ Home ยังเก็บไว้ตามที่ผู้ใช้สั่ง แม้ในแบบจะเป็นหน้าว่างเปล่า
+
+**2026-08-13 — ข้อมูลย้ายไปอยู่บน Supabase**
+
+`profile.json` และโฟลเดอร์ `images/` ไม่ใช่แหล่งข้อมูลจริงอีกต่อไป กลายเป็นเพียง cache
+ของจริงอยู่ในตาราง `public.profiles` และ bucket `profile-images` บน Supabase
+ดูรายละเอียดที่ [2026-08-13-account-and-auth-design.md](2026-08-13-account-and-auth-design.md)
+
+`Profile.makeUsernameSuffix()` ถูกลบ เพราะฐานข้อมูลเป็นเจ้าของการสร้าง suffix แล้ว
+และเป็นตัวที่รับประกันความไม่ซ้ำจริงผ่าน UNIQUE constraint

@@ -1196,6 +1196,9 @@ cd "$PROJ" && git add null-app && git commit -m "Move profile images to Supabase
                     }
 ```
 
+`SignUpView` ต้องเพิ่ม `import Supabase` ด้วย เพราะบรรทัดถัดไปอ้าง `Backend.client.auth`
+ซึ่งไฟล์นี้เดิม import แค่ SwiftUI (ไม่งั้น build พังทั้งสองแพลตฟอร์ม)
+
 และใน `SignUpView.submit()` เปลี่ยนให้เลือกเส้นทางตามว่ามีบัญชีอยู่แล้วหรือยัง:
 
 ```swift
@@ -1215,6 +1218,12 @@ cd "$PROJ" && git add null-app && git commit -m "Move profile images to Supabase
     }
 ```
 
+**เส้นทางกู้คืนต้องมีทางออก** — หลัง `createProfile` สำเร็จ `needsProfile` ยังเป็น true อยู่
+เพราะมีแต่ `ProfileStore.refresh()` เท่านั้นที่เปลี่ยนมันได้ และ `refresh()` ถูกแขวนไว้กับ
+สาขา Home ที่ยังไม่ถูกแสดง ผู้ใช้จึงติดอยู่ที่หน้าสมัครวนไม่จบ
+แก้โดยให้ `SignUpView` มี `var onProfileCreated: () async -> Void = {}` ที่เรียกหลังสำเร็จ
+แล้ว `null_appApp` ส่ง `{ await profileStore.refresh() }` เข้าไปทั้งสองสาขา
+
 - [ ] **Step 2: ตรวจว่า macOS ยัง build ผ่าน**
 
 ```bash
@@ -1225,9 +1234,17 @@ xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'pl
 
 ```bash
 xcrun simctl uninstall C7CBA4C6-2050-41B9-8DD1-A5DB6D005FEF purin.null-app
+xcrun simctl keychain C7CBA4C6-2050-41B9-8DD1-A5DB6D005FEF reset
 ```
 
-ลบแถวเดิมออกจากฐานข้อมูลด้วย `execute_sql` เพื่อให้เริ่มจากศูนย์จริง ๆ:
+**ต้องล้าง keychain ด้วย** — `uninstall` อย่างเดียวไม่พอ supabase-swift เก็บ session ไว้ใน
+Keychain ซึ่งอยู่รอดข้ามการลบแอป ถ้าไม่ล้าง แอปจะเปิดเข้า Home ในฐานะผู้ใช้คนเดิมทันที
+และการทดสอบ "เปิดครั้งแรก" จะไม่ได้ทดสอบอะไรเลย (เจอจริงตอนทำ Task 5)
+
+ลบแถวเดิมออกจากฐานข้อมูลเพื่อให้เริ่มจากศูนย์จริง ๆ:
+
+> ⚠️ `execute_sql` ผ่าน MCP ถูก permission classifier บล็อกสำหรับคำสั่ง `delete` —
+> ให้ผู้ใช้รันสองบรรทัดนี้เองใน Supabase SQL editor แล้วค่อยเดินต่อ
 
 ```sql
 delete from storage.objects where bucket_id = 'profile-images';

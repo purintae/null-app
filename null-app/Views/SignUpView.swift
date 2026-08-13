@@ -3,6 +3,7 @@
 //  null-app
 //
 
+import Supabase
 import SwiftUI
 
 /// สมัครโดยกรอกชื่ออย่างเดียว ไม่มีรหัสผ่าน ไม่มีอีเมล
@@ -10,6 +11,13 @@ import SwiftUI
 /// เพื่อไม่ให้มีกฎสองชุดที่หลุดจากกันได้
 struct SignUpView: View {
     let session: SessionStore
+
+    /// เรียกเมื่อสร้างโปรไฟล์สำเร็จ เพื่อให้ผู้เรียกไปดึงข้อมูลใหม่
+    ///
+    /// จำเป็นสำหรับเส้นทางกู้คืน — ตอนนั้น session.state เป็น .signedIn อยู่แล้ว
+    /// หน้าจอจึงไม่เปลี่ยนตามสถานะ session สิ่งเดียวที่พาออกจากหน้านี้ได้คือ
+    /// needsProfile ที่กลับเป็น false ซึ่งมีแต่ ProfileStore.refresh() เท่านั้นที่ทำให้เกิด
+    var onProfileCreated: () async -> Void = {}
 
     @State private var displayName = ""
     @State private var isWorking = false
@@ -90,7 +98,12 @@ struct SignUpView: View {
         defer { isWorking = false }
 
         do {
-            try await session.signUp(displayName: draft.trimmedDisplayName)
+            if Backend.client.auth.currentSession == nil {
+                try await session.signUp(displayName: draft.trimmedDisplayName)
+            } else {
+                try await session.createProfile(displayName: draft.trimmedDisplayName)
+            }
+            await onProfileCreated()
         } catch {
             failure = error.localizedDescription
         }
