@@ -72,13 +72,6 @@ nonisolated struct Profile: Codable, Equatable, Sendable {
     /// เหลือ 32 ตัว ยกกำลัง 6 = 1,073,741,824 แบบ ชนกันแทบเป็นศูนย์โดยไม่ต้องมีทะเบียนกลาง
     static let usernameSuffixAlphabet = Array("ABCDEFGHJKLMNPQRSTUVWXYZ23456789")
 
-    static func makeUsernameSuffix() -> String {
-        let alphabet = usernameSuffixAlphabet
-        return String((0 ..< usernameSuffixLength).map { _ in
-            alphabet[Int.random(in: 0 ..< alphabet.count)]
-        })
-    }
-
     /// ส่วนหน้าของ username ที่ได้จากชื่อ — เปลี่ยนตามชื่อเสมอ
     /// ชื่อถูกจำกัดให้เป็น ASCII อยู่แล้ว การกรองนี้จึงแค่ตัดช่องว่างกับเครื่องหมายออก
     /// "user" เป็นค่าสำรองสำหรับชื่อที่ไม่เหลืออักษรใดเลย เช่นชื่อที่มีแต่เครื่องหมาย

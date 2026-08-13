@@ -157,5 +157,5 @@ struct ProfileView: View {
     NavigationStack {
         ProfileView()
     }
-    .environment(ProfileStore(fileURL: URL.temporaryDirectory.appending(path: "preview.json")))
+    .environment(ProfileStore(cacheURL: URL.temporaryDirectory.appending(path: "preview.json")))
 }

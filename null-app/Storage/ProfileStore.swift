@@ -5,6 +5,7 @@
 
 import Foundation
 import Observation
+import Supabase
 import SwiftUI
 
 /// สิ่งที่ผู้ใช้ตั้งใจทำกับช่องรูปหนึ่งช่อง
@@ -15,115 +16,115 @@ nonisolated enum ImageEdit: Equatable, Sendable {
     case remove
 }
 
-/// เจ้าของ state ของโปรไฟล์เพียงผู้เดียว และเป็นจุดเดียวในแอปที่แตะไฟล์
+/// เจ้าของ state ของโปรไฟล์เพียงผู้เดียว
+/// หน้าตาสาธารณะเหมือนตอนเก็บไฟล์ในเครื่องทุกประการ View จึงไม่ต้องแก้อะไรเลย
+/// สิ่งที่เปลี่ยนคือหลังบ้าน จากไฟล์ JSON เป็น Supabase
 @Observable
 final class ProfileStore {
     private(set) var profile: Profile
     private(set) var avatarImage: Image?
     private(set) var coverImage: Image?
 
-    private let fileURL: URL
-    private var writeTask: Task<Void, Error>?
+    /// จริงเมื่อมีบัญชีแล้วแต่ยังไม่มีแถวใน profiles
+    /// เกิดได้เมื่อสมัครค้างกลางทาง — สร้างบัญชีสำเร็จแต่สร้างโปรไฟล์ไม่สำเร็จ
+    private(set) var needsProfile = false
 
-    private var imagesDirectory: URL {
-        ProfileStore.imagesDirectory(besides: fileURL)
-    }
+    private let cacheURL: URL
 
-    /// อ่านไฟล์แบบ synchronous โดยตั้งใจ — ไฟล์เล็กมาก การอ่านเร็วกว่าหนึ่งเฟรม
-    /// และการทำแบบ async จะทำให้เห็นจอว่างแวบหนึ่งก่อนข้อมูลมา
-    /// รูปก็อ่านที่นี่ด้วยเหตุผลเดียวกัน — ย่อไว้ที่ 512/1600px แล้วจึง decode เร็วพอ
-    /// และการโหลดทีหลังจะทำให้เห็น avatar กระพริบจากอักษรย่อเป็นรูป
-    init(fileURL: URL = ProfileStore.defaultFileURL) {
-        self.fileURL = fileURL
-
-        var loaded = ProfileStore.read(from: fileURL)
-
-        // เติมค่าที่เกิดครั้งเดียวแล้วอยู่ถาวรให้ทันที แล้วเขียนลงดิสก์เดี๋ยวนั้นเลย
-        // ไม่รอผู้ใช้กด Save เพราะถ้ารอ การปิดแอปก่อนบันทึกจะทำให้สุ่มใหม่ทุกครั้งที่เปิด
-        // username กับสีประจำตัวก็จะไม่นิ่ง ซึ่งขัดกับเหตุผลทั้งหมดที่มีค่าพวกนี้
-        //
-        // ตรวจทีละค่าแยกกัน เพราะไฟล์ที่บันทึกไว้ระหว่างทางอาจมี suffix แล้วแต่ยังไม่มี createdAt
-        //
-        // ถ้าเขียนพลาดที่นี่ ค่ายังอยู่ใน memory และจะถูกบันทึกตอน save ครั้งถัดไป
-        // ไม่ throw ออกไปเพราะการเปิดแอปไม่ควรล้มเหลวด้วยเรื่องนี้
-        var needsSeeding = false
-
-        if loaded.usernameSuffix.isEmpty {
-            loaded.usernameSuffix = Profile.makeUsernameSuffix()
-            needsSeeding = true
-        }
-
-        if loaded.createdAt == nil {
-            loaded.createdAt = Date()
-            needsSeeding = true
-        }
-
-        if needsSeeding {
-            try? ProfileStore.write(loaded, to: fileURL)
-        }
-
-        self.profile = loaded
-
-        let directory = ProfileStore.imagesDirectory(besides: fileURL)
-        self.avatarImage = ProfileStore.loadImage(named: loaded.avatarFileName, in: directory)
-        self.coverImage = ProfileStore.loadImage(named: loaded.coverFileName, in: directory)
-    }
-
-    /// ตั้งค่าใน memory ก่อน แล้วค่อยเขียนดิสก์
-    /// ถ้าเขียนพลาด ค่าใน memory ยังอยู่ ผู้ใช้ไม่เสียสิ่งที่พิมพ์ไป
+    /// อ่าน cache แบบ synchronous ตอนสร้างโดยตั้งใจ — เห็นโปรไฟล์ทันทีโดยไม่ต้องรอเน็ต
+    /// แล้วค่อย refresh ทับด้วยของจริงจาก server
     ///
-    /// ลำดับสำคัญมาก: เขียนไฟล์รูปใหม่ → เขียน JSON → ค่อยลบรูปเก่า
-    /// ถ้าพังกลางทางจะเหลือรูปกำพร้าที่ไม่มีใครอ้างถึง ซึ่งแค่กินที่
-    /// ส่วนลำดับกลับกันจะได้ JSON ที่ชี้ไปยังไฟล์ที่ถูกลบไปแล้ว ซึ่งคือรูปหาย
+    /// ถ้ายังไม่มี session ให้ล้างข้อมูลเก่าทิ้งก่อน — ไฟล์ที่ค้างอยู่จากยุคที่แอปเก็บข้อมูล
+    /// ในเครื่องล้วนไม่ใช่ของบัญชีใด และการปล่อยไว้จะทำให้เห็นโปรไฟล์ของคนก่อนหน้า
+    /// หลังสมัครบัญชีใหม่ ซึ่งเป็นข้อมูลรั่วข้ามบัญชีบนเครื่องที่ใช้ร่วมกัน
+    init(cacheURL: URL = ProfileStore.defaultCacheURL) {
+        self.cacheURL = cacheURL
+
+        if Backend.client.auth.currentSession == nil {
+            ProfileStore.clearLocalData(cacheURL: cacheURL)
+            self.profile = .empty
+            self.avatarImage = nil
+            self.coverImage = nil
+            return
+        }
+
+        self.profile = ProfileStore.readCache(from: cacheURL)
+
+        let directory = ProfileStore.imagesDirectory(besides: cacheURL)
+        self.avatarImage = ProfileStore.loadImage(named: profile.avatarFileName, in: directory)
+        self.coverImage = ProfileStore.loadImage(named: profile.coverFileName, in: directory)
+    }
+
+    nonisolated static func clearLocalData(cacheURL: URL) {
+        try? FileManager.default.removeItem(at: cacheURL)
+        try? FileManager.default.removeItem(at: imagesDirectory(besides: cacheURL))
+    }
+
+    /// ดึงของจริงจาก server มาทับ cache
+    /// ไม่ throw เพราะการเปิดแอปตอนไม่มีเน็ตควรใช้งานต่อได้ด้วยข้อมูลที่แคชไว้
+    func refresh() async {
+        guard let userID = Backend.client.auth.currentSession?.user.id else { return }
+
+        do {
+            let rows: [RemoteProfile] = try await Backend.client
+                .from("profiles")
+                .select()
+                .eq("user_id", value: userID)
+                .execute()
+                .value
+
+            guard let row = rows.first else {
+                needsProfile = true
+                return
+            }
+
+            needsProfile = false
+            profile = Profile(
+                displayName: row.displayName,
+                bio: profile.bio,
+                usernameSuffix: row.stableSuffix,
+                createdAt: row.createdAt,
+                avatarFileName: profile.avatarFileName,
+                coverFileName: profile.coverFileName
+            )
+            ProfileStore.writeCache(profile, to: cacheURL)
+        } catch {
+            // เก็บ cache ไว้ใช้ต่อ ไม่รบกวนผู้ใช้ด้วย error ตอนเปิดแอป
+        }
+    }
+
+    /// ตั้งค่าใน memory ก่อน แล้วค่อยส่งขึ้น server
+    /// ถ้าส่งพลาด ค่าใน memory ยังอยู่ ผู้ใช้ไม่เสียสิ่งที่พิมพ์ไป
+    /// รูปยังไม่ถูกจัดการใน task นี้ — Task 6 มาเติม
     func update(
         _ newProfile: Profile,
         avatar: ImageEdit = .unchanged,
         cover: ImageEdit = .unchanged
     ) async throws {
-        let directory = imagesDirectory
-        let previous = profile
+        _ = avatar
+        _ = cover
 
-        let avatarName = try await ProfileStore.applyEdit(
-            avatar,
-            current: previous.avatarFileName,
-            maxPixel: ProfileImage.avatarMaxPixel,
-            in: directory
-        )
+        profile = newProfile
+        ProfileStore.writeCache(newProfile, to: cacheURL)
 
-        let coverName = try await ProfileStore.applyEdit(
-            cover,
-            current: previous.coverFileName,
-            maxPixel: ProfileImage.coverMaxPixel,
-            in: directory
-        )
-
-        var finalProfile = newProfile
-        finalProfile.avatarFileName = avatarName
-        finalProfile.coverFileName = coverName
-
-        profile = finalProfile
-
-        if avatar != .unchanged {
-            avatarImage = ProfileStore.loadImage(named: avatarName, in: directory)
-        }
-        if cover != .unchanged {
-            coverImage = ProfileStore.loadImage(named: coverName, in: directory)
+        struct Patch: Encodable {
+            let display_name: String
         }
 
-        let url = fileURL
-        let pending = writeTask
-        let task = Task.detached(priority: .utility) {
-            _ = try? await pending?.value
-            try ProfileStore.write(finalProfile, to: url)
+        guard let userID = Backend.client.auth.currentSession?.user.id else {
+            throw ProfileStoreError.notSignedIn
         }
-        writeTask = task
-        try await task.value
 
-        ProfileStore.deleteIfReplaced(previous.avatarFileName, by: avatarName, in: directory)
-        ProfileStore.deleteIfReplaced(previous.coverFileName, by: coverName, in: directory)
+        try await Backend.client
+            .from("profiles")
+            .update(Patch(display_name: newProfile.trimmedDisplayName))
+            .eq("user_id", value: userID)
+            .execute()
     }
 
-    static var defaultFileURL: URL {
+    // MARK: - Cache
+
+    static var defaultCacheURL: URL {
         URL.applicationSupportDirectory.appending(path: "profile.json")
     }
 
@@ -131,9 +132,7 @@ final class ProfileStore {
         fileURL.deletingLastPathComponent().appending(path: "images")
     }
 
-    /// ทุกความล้มเหลวของการอ่านแปลงเป็นค่าว่าง — ไม่มีไฟล์คือเรื่องปกติของการเปิดครั้งแรก
-    /// ส่วนไฟล์เสียก็ไม่ควรทำให้แอปเปิดไม่ขึ้น
-    nonisolated static func read(from url: URL) -> Profile {
+    nonisolated static func readCache(from url: URL) -> Profile {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
 
@@ -146,53 +145,18 @@ final class ProfileStore {
         return decoded
     }
 
-    /// throw ออกไปให้ผู้เรียกจัดการ เพราะผู้ใช้ต้องรู้ว่าบันทึกไม่สำเร็จ
-    nonisolated static func write(_ profile: Profile, to url: URL) throws {
-        try FileManager.default.createDirectory(
+    /// cache พังไม่ใช่เรื่องที่ผู้ใช้ต้องรับรู้ ของจริงอยู่บน server
+    nonisolated static func writeCache(_ profile: Profile, to url: URL) {
+        try? FileManager.default.createDirectory(
             at: url.deletingLastPathComponent(),
             withIntermediateDirectories: true
         )
 
-        // ISO8601 แทนตัวเลข timestamp เพื่อให้เปิดไฟล์อ่านเองแล้วเข้าใจได้
-        // encoder กับ decoder ต้องใช้กลยุทธ์เดียวกันเสมอ ไม่งั้นอ่านกลับไม่ออก
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601
 
-        let data = try encoder.encode(profile)
-        try data.write(to: url, options: .atomic)
-    }
-
-    /// คืนชื่อไฟล์ที่ควรอยู่ใน Profile หลังทำตามเจตนาของผู้ใช้
-    /// การย่อรูปหนักพอที่จะไม่ควรทำบน main actor จึงโยนเข้า detached task
-    nonisolated static func applyEdit(
-        _ edit: ImageEdit,
-        current: String?,
-        maxPixel: Int,
-        in directory: URL
-    ) async throws -> String? {
-        switch edit {
-        case .unchanged:
-            return current
-
-        case .remove:
-            return nil
-
-        case .replace(let raw):
-            return try await Task.detached(priority: .userInitiated) {
-                let jpeg = try ProfileImage.prepare(raw, maxPixel: maxPixel)
-
-                try FileManager.default.createDirectory(
-                    at: directory,
-                    withIntermediateDirectories: true
-                )
-
-                // ชื่อใหม่ทุกครั้งแทนการเขียนทับชื่อเดิม
-                // ไฟล์เก่ายังอยู่จนกว่า JSON จะบันทึกสำเร็จ จึงย้อนกลับได้ถ้าพัง
-                let name = "\(UUID().uuidString).jpg"
-                try jpeg.write(to: directory.appending(path: name), options: .atomic)
-                return name
-            }.value
-        }
+        guard let data = try? encoder.encode(profile) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 
     static func loadImage(named name: String?, in directory: URL) -> Image? {
@@ -205,9 +169,12 @@ final class ProfileStore {
         }
         return Image(decorative: decoded, scale: 1)
     }
+}
 
-    nonisolated static func deleteIfReplaced(_ old: String?, by new: String?, in directory: URL) {
-        guard let old, old != new else { return }
-        try? FileManager.default.removeItem(at: directory.appending(path: old))
+nonisolated enum ProfileStoreError: LocalizedError {
+    case notSignedIn
+
+    var errorDescription: String? {
+        "You're not signed in."
     }
 }
