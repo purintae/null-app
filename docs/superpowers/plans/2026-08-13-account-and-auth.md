@@ -349,7 +349,9 @@ curl -s -X POST "https://yqeqzplufezlnudsxzql.supabase.co/auth/v1/signup" \
 **Files:**
 - Create: `null-app/Storage/Backend.swift`
 - Create: `null-app/Storage/SessionStore.swift`
-- Modify: `null-app/null_appApp.swift` (แทนที่ทั้งไฟล์)
+
+**ไม่แตะ `null_appApp.swift` ใน task นี้** — การสลับ root ต้องอ้างทั้ง `SignUpView` และ `ProfileStore`
+ซึ่งยังไม่มีทั้งคู่ ถ้าแก้ที่นี่ task จะจบลงด้วย build ที่พัง งานนั้นอยู่ท้าย Task 5
 
 **Interfaces:**
 - Consumes: ฟังก์ชัน `create_profile` จาก Task 1
@@ -446,59 +448,30 @@ final class SessionStore {
 }
 ```
 
-- [ ] **Step 3: แทนที่ `null_appApp.swift` ทั้งไฟล์**
-
-```swift
-//
-//  null_appApp.swift
-//  null-app
-//
-//  Created by Purin Tae on 12/8/2569 BE.
-//
-
-import SwiftUI
-
-@main
-struct null_appApp: App {
-    @State private var session = SessionStore()
-
-    /// ธีมที่ผู้ใช้เลือกใน Settings ต้องอ่านที่รากเพื่อครอบทั้งแอป
-    @AppStorage("appearance") private var appearance: AppearanceSetting = .system
-
-    var body: some Scene {
-        WindowGroup {
-            Group {
-                switch session.state {
-                case .loading:
-                    ProgressView()
-
-                case .signedOut:
-                    SignUpView(session: session)
-
-                case .signedIn:
-                    // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
-                    NavigationStack {
-                        HomeView()
-                    }
-                    .environment(ProfileStore())
-                }
-            }
-            .preferredColorScheme(appearance.colorScheme)
-        }
-    }
-}
-```
-
-- [ ] **Step 4: Build ทั้งสองแพลตฟอร์ม**
+- [ ] **Step 3: Build ทั้งสองแพลตฟอร์ม**
 
 ```bash
 xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'generic/platform=iOS Simulator' build 2>&1 | grep -E "warning:|error:|BUILD (SUCCEEDED|FAILED)" | grep -v appintentsmetadataprocessor
 xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'platform=macOS' build 2>&1 | grep -E "^/.*(warning|error):|BUILD (SUCCEEDED|FAILED)"
 ```
 
-คาดหวัง: `** BUILD SUCCEEDED **` ทั้งคู่ และ grep ไม่เจอ warning จาก source ของเรา
+คาดหวัง: `** BUILD SUCCEEDED **` ทั้งคู่ และไม่มี warning จาก source ของเรา
 
-ขั้นนี้จะยัง compile ไม่ผ่านจนกว่า `SignUpView` และ `ProfileStore()` แบบไม่มี argument จะมีอยู่ — **นั่นคือสิ่งที่คาดหวังใน Step นี้** ให้บันทึก error ไว้แล้วไปต่อ Task 4 ซึ่งเป็นตัวเติมให้ครบ
+ไฟล์ทั้งสองที่สร้างในนี้ไม่ได้อ้างอะไรที่ยังไม่มี จึงต้องผ่านตั้งแต่รอบนี้
+ถ้าไม่ผ่าน แปลว่า package ยังไม่ถูกเพิ่มหรือ import ผิด — หยุดแก้ก่อนไปต่อ
+
+- [ ] **Step 4: ยืนยันว่า anonymous sign-in เปิดแล้วจริง**
+
+```bash
+curl -s -X POST "https://yqeqzplufezlnudsxzql.supabase.co/auth/v1/signup" \
+  -H "apikey: sb_publishable_TzWBdrFCJzBBL8wlrU-ksg_eJyYZto1" \
+  -H "Content-Type: application/json" -d '{}' | head -c 300
+```
+
+คาดหวัง: JSON ที่มี `access_token` — ถ้าเจอ `anonymous_provider_disabled` แปลว่าผู้ใช้ยังไม่ได้เปิด
+ให้หยุดและแจ้ง ไม่ต้องเดินต่อ
+
+ผู้ใช้ทดสอบนี้จะสร้างบัญชีทิ้งไว้หนึ่งใบ — ลบออกใน Task 7 Step 3 อยู่แล้ว
 
 - [ ] **Step 5: Commit**
 
@@ -628,9 +601,13 @@ struct SignUpView: View {
 
 ```bash
 xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'generic/platform=iOS Simulator' build 2>&1 | grep -E "warning:|error:|BUILD (SUCCEEDED|FAILED)" | grep -v appintentsmetadataprocessor
+xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'platform=macOS' build 2>&1 | grep -E "^/.*(warning|error):|BUILD (SUCCEEDED|FAILED)"
 ```
 
-ยังจะไม่ผ่านจนกว่า `ProfileStore()` แบบไม่มี argument จะมี ซึ่งเป็นงานของ Task 5
+คาดหวัง: `** BUILD SUCCEEDED **` ทั้งคู่ ไม่มี warning
+
+`SignUpView` อ้างแค่ `SessionStore` กับ `Profile` ซึ่งมีครบแล้ว จึงต้องผ่านตั้งแต่รอบนี้
+ยังไม่มีใครเรียกใช้มัน — การสลับ root เกิดใน Task 5
 
 - [ ] **Step 3: Commit**
 
@@ -887,23 +864,51 @@ nonisolated enum ProfileStoreError: LocalizedError {
 
 เหตุผลที่ลบ: ฐานข้อมูลเป็นเจ้าของการสร้าง suffix แล้ว การเหลือตัวสร้างฝั่งแอปไว้เป็นกับดักให้ใครสักคนเรียกใช้แล้วได้ค่าที่ไม่ผ่านการกันซ้ำ
 
-- [ ] **Step 4: เรียก refresh ตอนเข้า Home**
+- [ ] **Step 4: แทนที่ `null_appApp.swift` ทั้งไฟล์ — สลับ root ตามสถานะ session**
 
-ใน `null-app/null_appApp.swift` เปลี่ยน case `.signedIn` เป็น:
+ตอนนี้ทั้ง `SignUpView` และ `ProfileStore()` แบบไม่มี argument มีครบแล้ว จึงเป็นจังหวะที่ต่อสายได้โดย build ไม่พัง
 
 ```swift
+//
+//  null_appApp.swift
+//  null-app
+//
+//  Created by Purin Tae on 12/8/2569 BE.
+//
+
+import SwiftUI
+
+@main
+struct null_appApp: App {
+    @State private var session = SessionStore()
+    @State private var profileStore = ProfileStore()
+
+    /// ธีมที่ผู้ใช้เลือกใน Settings ต้องอ่านที่รากเพื่อครอบทั้งแอป
+    @AppStorage("appearance") private var appearance: AppearanceSetting = .system
+
+    var body: some Scene {
+        WindowGroup {
+            Group {
+                switch session.state {
+                case .loading:
+                    ProgressView()
+
+                case .signedOut:
+                    SignUpView(session: session)
+
                 case .signedIn:
+                    // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
                     NavigationStack {
                         HomeView()
                     }
                     .environment(profileStore)
                     .task { await profileStore.refresh() }
-```
-
-และเพิ่ม property ที่ระดับ struct:
-
-```swift
-    @State private var profileStore = ProfileStore()
+                }
+            }
+            .preferredColorScheme(appearance.colorScheme)
+        }
+    }
+}
 ```
 
 - [ ] **Step 5: Build ทั้งสองแพลตฟอร์ม**
