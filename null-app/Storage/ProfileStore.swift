@@ -31,8 +31,11 @@ final class ProfileStore {
 
     private let cacheURL: URL
 
-    /// อ่าน cache แบบ synchronous ตอนสร้างโดยตั้งใจ — เห็นโปรไฟล์ทันทีโดยไม่ต้องรอเน็ต
+    /// อ่าน cache แบบ synchronous ตอนสร้างโดยตั้งใจ — เห็นชื่อกับ username ทันทีโดยไม่ต้องรอเน็ต
     /// แล้วค่อย refresh ทับด้วยของจริงจาก server
+    ///
+    /// รูปไม่ได้ถูกแคชในเครื่องแล้ว — ตั้งแต่ย้ายไป Storage ไฟล์อยู่บน server อย่างเดียว
+    /// avatar กับ cover จึงมาทีหลังพร้อม refresh() ผู้ใช้จะเห็นอักษรย่อก่อนแล้วรูปค่อยขึ้น
     ///
     /// ถ้ายังไม่มี session ให้ล้างข้อมูลเก่าทิ้งก่อน — ไฟล์ที่ค้างอยู่จากยุคที่แอปเก็บข้อมูล
     /// ในเครื่องล้วนไม่ใช่ของบัญชีใด และการปล่อยไว้จะทำให้เห็นโปรไฟล์ของคนก่อนหน้า
@@ -40,19 +43,13 @@ final class ProfileStore {
     init(cacheURL: URL = ProfileStore.defaultCacheURL) {
         self.cacheURL = cacheURL
 
-        if Backend.client.auth.currentSession == nil {
+        guard Backend.client.auth.currentSession != nil else {
             ProfileStore.clearLocalData(cacheURL: cacheURL)
             self.profile = .empty
-            self.avatarImage = nil
-            self.coverImage = nil
             return
         }
 
         self.profile = ProfileStore.readCache(from: cacheURL)
-
-        let directory = ProfileStore.imagesDirectory(besides: cacheURL)
-        self.avatarImage = ProfileStore.loadImage(named: profile.avatarFileName, in: directory)
-        self.coverImage = ProfileStore.loadImage(named: profile.coverFileName, in: directory)
     }
 
     nonisolated static func clearLocalData(cacheURL: URL) {
@@ -81,7 +78,7 @@ final class ProfileStore {
             needsProfile = false
             profile = Profile(
                 displayName: row.displayName,
-                bio: profile.bio,
+                bio: row.bio,
                 usernameSuffix: row.stableSuffix,
                 createdAt: row.createdAt,
                 avatarFileName: row.avatarPath,
@@ -133,10 +130,28 @@ final class ProfileStore {
         profile = finalProfile
         ProfileStore.writeCache(finalProfile, to: cacheURL)
 
+        /// เขียน encode เองโดยตั้งใจ ห้ามลดกลับไปใช้ synthesized
+        /// เหตุผล: synthesized encoder ใช้ encodeIfPresent กับ Optional ซึ่ง "ตัดคีย์ทิ้ง"
+        /// เมื่อค่าเป็น nil แต่ PATCH ของ PostgREST อ่านคีย์ที่หายไปว่า "ไม่ต้องแตะคอลัมน์นี้"
+        /// การลบรูปจึงลบไฟล์ทิ้งแต่ไม่เคยล้างคอลัมน์ เหลือแถวที่ชี้ไปยังไฟล์ที่ไม่มีอยู่แล้ว
+        /// การ encode ตรง ๆ ส่ง null ออกไปจริง ซึ่งแปลว่า "ล้างค่า"
         struct Patch: Encodable {
             let display_name: String
+            let bio: String
             let avatar_path: String?
             let cover_path: String?
+
+            enum CodingKeys: String, CodingKey {
+                case display_name, bio, avatar_path, cover_path
+            }
+
+            func encode(to encoder: Encoder) throws {
+                var container = encoder.container(keyedBy: CodingKeys.self)
+                try container.encode(display_name, forKey: .display_name)
+                try container.encode(bio, forKey: .bio)
+                try container.encode(avatar_path, forKey: .avatar_path)
+                try container.encode(cover_path, forKey: .cover_path)
+            }
         }
 
         try await Backend.client
@@ -144,6 +159,7 @@ final class ProfileStore {
             .update(
                 Patch(
                     display_name: finalProfile.trimmedDisplayName,
+                    bio: finalProfile.bio,
                     avatar_path: avatarPath,
                     cover_path: coverPath
                 )
@@ -222,6 +238,8 @@ final class ProfileStore {
         URL.applicationSupportDirectory.appending(path: "profile.json")
     }
 
+    /// เหลือไว้เพื่อล้างของเก่าเท่านั้น — ไม่มีอะไรเขียนลงโฟลเดอร์นี้แล้วตั้งแต่ย้ายรูปไป Storage
+    /// แต่เครื่องที่เคยใช้เวอร์ชันก่อนหน้ายังมีไฟล์ค้างอยู่ และ clearLocalData ต้องเก็บให้หมด
     nonisolated static func imagesDirectory(besides fileURL: URL) -> URL {
         fileURL.deletingLastPathComponent().appending(path: "images")
     }
@@ -253,16 +271,6 @@ final class ProfileStore {
         try? data.write(to: url, options: .atomic)
     }
 
-    static func loadImage(named name: String?, in directory: URL) -> Image? {
-        guard
-            let name,
-            let data = try? Data(contentsOf: directory.appending(path: name)),
-            let decoded = ProfileImage.decode(data)
-        else {
-            return nil
-        }
-        return Image(decorative: decoded, scale: 1)
-    }
 }
 
 nonisolated enum ProfileStoreError: LocalizedError {

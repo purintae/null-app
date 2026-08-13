@@ -67,15 +67,20 @@ final class SessionStore {
 
         try await Backend.client.auth.signInAnonymously()
         try await createProfile(displayName: displayName)
-
-        guard let session = Backend.client.auth.currentSession else { return }
-        state = .signedIn(userID: session.user.id)
     }
 
     /// แยกออกมาเพราะถูกเรียกซ้ำได้ ในกรณีที่บัญชีมีแล้วแต่โปรไฟล์ยังไม่มี
+    ///
+    /// ประกาศ .signedIn ที่นี่ ไม่ใช่ใน signUp เพราะทั้งสองเส้นทางผ่านจุดนี้เหมือนกัน
+    /// และ event ที่ signInAnonymously ยิงออกมาถูก watcher ทิ้งไปแล้วระหว่างที่กั้นอยู่
+    /// ถ้าประกาศเฉพาะตอน signUp สำเร็จ กรณีที่ createProfile ล้มเหลวรอบแรกแล้วผู้ใช้กดใหม่
+    /// จะสร้างโปรไฟล์สำเร็จแต่ state ค้างที่ .signedOut ตลอด ผู้ใช้ติดอยู่หน้าสมัครจนกว่าจะปิดแอป
     func createProfile(displayName: String) async throws {
         try await Backend.client
             .rpc("create_profile", params: ["p_display_name": displayName])
             .execute()
+
+        guard let session = Backend.client.auth.currentSession else { return }
+        state = .signedIn(userID: session.user.id)
     }
 }
