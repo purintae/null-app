@@ -296,9 +296,9 @@ create policy "users delete their own files"
 ```sql
 select
   (select public from storage.buckets where id = 'profile-images')            as bucket_is_public,
+  -- วงเล็บสำคัญ: ถ้าไม่ใส่ OR จะหลุดจากเงื่อนไข schema/table แล้วไปนับ policy ของตารางอื่นมาด้วย
   (select count(*) from pg_policies
-     where schemaname = 'storage' and tablename = 'objects'
-       and policyname like '%profile images%' or policyname like '%their own%') as policy_count,
+     where schemaname = 'storage' and tablename = 'objects') as policy_count,
   -- ยืนยันว่า foldername แยก path ได้อย่างที่ policy คาดไว้
   (storage.foldername('11111111-1111-1111-1111-111111111111/avatar-x.jpg'))[1]
     = '11111111-1111-1111-1111-111111111111'                                   as foldername_ok;
