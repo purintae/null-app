@@ -86,6 +86,12 @@ Supabase project `yqeqzplufezlnudsxzql` (`null-app`, ap-southeast-1). Apply sche
 
 RLS is the entire security model. A policy that has not been tested by trying to break it is a policy nobody knows the behaviour of — when adding one, prove it *refuses* the bad case, not just that it permits the good one.
 
+**Every function in `public` is pinned to `set search_path = ''`.** Empty rather than `public`: `pg_catalog` is still searched implicitly so built-ins keep resolving, and everything else must be schema-qualified in the body. New functions must set it too — an unpinned function resolves its own unqualified names through whatever `search_path` the *caller* chose.
+
+**`create_profile` is the only function the app is allowed to reach.** `generate_stable_suffix` and `freeze_profile_identity` have `EXECUTE` revoked from `PUBLIC`, `anon`, and `authenticated`; `create_profile` is revoked from `anon` and granted only to `authenticated`. Everything in `public` is exposed at `/rest/v1/rpc/<name>` to anyone holding the publishable key, so a helper left with its default grants is a public endpoint. Supabase's default privileges grant `EXECUTE` **directly** to `anon` and `authenticated` on top of the grant to `PUBLIC`, so revoking from `PUBLIC` alone leaves the function wide open — name all three. Revoking does not break `generate_stable_suffix`: its only caller is `create_profile`, which is `SECURITY DEFINER` and therefore runs with the owner's rights.
+
+Two advisor warnings are expected and should not be "fixed": `create_profile` being executable by `authenticated` is the signup path, and *Anonymous Access Policies* fires because anonymous sign-in users hold the `authenticated` role — which is this app's entire auth model. The policies themselves are scoped to `authenticated`, and a caller with only the publishable key reads **0 rows** from `profiles`. Verify that with `set local role anon` before believing it.
+
 ## Project configuration
 
 Facts spread across `project.pbxproj` that shape how you should work:
