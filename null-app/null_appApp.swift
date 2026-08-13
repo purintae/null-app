@@ -25,7 +25,7 @@ struct null_appApp: App {
                 case .signedOut:
                     signUpScreen
 
-                case .signedIn:
+                case .signedIn(let userID):
                     if profileStore.needsProfile {
                         // สมัครค้างกลางทาง — มีบัญชีแล้วแต่ยังไม่มีโปรไฟล์
                         // ให้กรอกชื่อเพื่อสร้างแถวให้ครบ ไม่ใช่สร้างบัญชีใหม่ซ้อน
@@ -33,7 +33,7 @@ struct null_appApp: App {
                     } else {
                         // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
                         NavigationStack {
-                            HomeView()
+                            HomeView(userID: userID)
                         }
                         .environment(profileStore)
                         .task { await profileStore.refresh() }
