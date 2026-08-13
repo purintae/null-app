@@ -84,42 +84,136 @@ final class ProfileStore {
                 bio: profile.bio,
                 usernameSuffix: row.stableSuffix,
                 createdAt: row.createdAt,
-                avatarFileName: profile.avatarFileName,
-                coverFileName: profile.coverFileName
+                avatarFileName: row.avatarPath,
+                coverFileName: row.coverPath
             )
             ProfileStore.writeCache(profile, to: cacheURL)
+
+            avatarImage = await Self.downloadImage(path: row.avatarPath)
+            coverImage = await Self.downloadImage(path: row.coverPath)
         } catch {
             // เก็บ cache ไว้ใช้ต่อ ไม่รบกวนผู้ใช้ด้วย error ตอนเปิดแอป
         }
     }
 
-    /// ตั้งค่าใน memory ก่อน แล้วค่อยส่งขึ้น server
-    /// ถ้าส่งพลาด ค่าใน memory ยังอยู่ ผู้ใช้ไม่เสียสิ่งที่พิมพ์ไป
-    /// รูปยังไม่ถูกจัดการใน task นี้ — Task 6 มาเติม
+    /// ลำดับสำคัญ: อัปโหลดรูปใหม่ → อัปเดตแถวใน DB → ค่อยลบรูปเก่า
+    /// พังกลางทางจะเหลือไฟล์กำพร้าที่แค่กินที่ ส่วนลำดับกลับกันจะได้แถวที่ชี้ไปไฟล์ที่ถูกลบแล้ว
     func update(
         _ newProfile: Profile,
         avatar: ImageEdit = .unchanged,
         cover: ImageEdit = .unchanged
     ) async throws {
-        _ = avatar
-        _ = cover
-
-        profile = newProfile
-        ProfileStore.writeCache(newProfile, to: cacheURL)
-
-        struct Patch: Encodable {
-            let display_name: String
-        }
-
         guard let userID = Backend.client.auth.currentSession?.user.id else {
             throw ProfileStoreError.notSignedIn
         }
 
+        let previousAvatar = profile.avatarFileName
+        let previousCover = profile.coverFileName
+
+        let avatarPath = try await Self.applyEdit(
+            avatar,
+            current: previousAvatar,
+            kind: "avatar",
+            maxPixel: ProfileImage.avatarMaxPixel,
+            userID: userID
+        )
+
+        let coverPath = try await Self.applyEdit(
+            cover,
+            current: previousCover,
+            kind: "cover",
+            maxPixel: ProfileImage.coverMaxPixel,
+            userID: userID
+        )
+
+        var finalProfile = newProfile
+        finalProfile.avatarFileName = avatarPath
+        finalProfile.coverFileName = coverPath
+
+        profile = finalProfile
+        ProfileStore.writeCache(finalProfile, to: cacheURL)
+
+        struct Patch: Encodable {
+            let display_name: String
+            let avatar_path: String?
+            let cover_path: String?
+        }
+
         try await Backend.client
             .from("profiles")
-            .update(Patch(display_name: newProfile.trimmedDisplayName))
+            .update(
+                Patch(
+                    display_name: finalProfile.trimmedDisplayName,
+                    avatar_path: avatarPath,
+                    cover_path: coverPath
+                )
+            )
             .eq("user_id", value: userID)
             .execute()
+
+        if avatar != .unchanged {
+            avatarImage = await Self.downloadImage(path: avatarPath)
+        }
+        if cover != .unchanged {
+            coverImage = await Self.downloadImage(path: coverPath)
+        }
+
+        await Self.deleteIfReplaced(previousAvatar, by: avatarPath)
+        await Self.deleteIfReplaced(previousCover, by: coverPath)
+    }
+
+    /// path ขึ้นต้นด้วย user_id เสมอ เพื่อให้ policy ของ Storage เทียบกับ auth.uid() ได้ตรง ๆ
+    ///
+    /// ต้องเป็นตัวพิมพ์เล็ก — policy เทียบ (storage.foldername(name))[1] = auth.uid()::text
+    /// ซึ่ง Postgres เขียน uuid ออกมาเป็นตัวพิมพ์เล็กเสมอ ส่วน UUID.uuidString ของ Swift
+    /// เป็นตัวพิมพ์ใหญ่เสมอ ถ้าส่งไปตรง ๆ การเทียบสตริงจะไม่มีวันตรงและ upload จะโดนปฏิเสธ
+    /// ทุกครั้งด้วย "new row violates row-level security policy"
+    static func applyEdit(
+        _ edit: ImageEdit,
+        current: String?,
+        kind: String,
+        maxPixel: Int,
+        userID: UUID
+    ) async throws -> String? {
+        switch edit {
+        case .unchanged:
+            return current
+
+        case .remove:
+            return nil
+
+        case .replace(let raw):
+            let jpeg = try await Task.detached(priority: .userInitiated) {
+                try ProfileImage.prepare(raw, maxPixel: maxPixel)
+            }.value
+
+            let path = "\(userID.uuidString.lowercased())/\(kind)-\(UUID().uuidString).jpg"
+
+            try await Backend.client.storage
+                .from("profile-images")
+                .upload(path, data: jpeg, options: FileOptions(contentType: "image/jpeg"))
+
+            return path
+        }
+    }
+
+    static func downloadImage(path: String?) async -> Image? {
+        guard let path else { return nil }
+
+        guard
+            let data = try? await Backend.client.storage
+                .from("profile-images")
+                .download(path: path),
+            let decoded = ProfileImage.decode(data)
+        else {
+            return nil
+        }
+        return Image(decorative: decoded, scale: 1)
+    }
+
+    static func deleteIfReplaced(_ old: String?, by new: String?) async {
+        guard let old, old != new else { return }
+        _ = try? await Backend.client.storage.from("profile-images").remove(paths: [old])
     }
 
     // MARK: - Cache
