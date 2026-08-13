@@ -1243,13 +1243,23 @@ Keychain ซึ่งอยู่รอดข้ามการลบแอป �
 
 ลบแถวเดิมออกจากฐานข้อมูลเพื่อให้เริ่มจากศูนย์จริง ๆ:
 
-> ⚠️ `execute_sql` ผ่าน MCP ถูก permission classifier บล็อกสำหรับคำสั่ง `delete` —
-> ให้ผู้ใช้รันสองบรรทัดนี้เองใน Supabase SQL editor แล้วค่อยเดินต่อ
+> ⚠️ **ลบไฟล์ใน Storage ด้วย SQL ไม่ได้แล้ว** — Supabase มี trigger `storage.protect_delete()`
+> ที่ปฏิเสธ `delete from storage.objects` ตรง ๆ ด้วย `ERROR 42501: Direct deletion from
+> storage tables is not allowed. Use the Storage API instead.`
+> ให้ลบไฟล์ผ่านหน้า Storage ของ dashboard แทน (หรือผ่าน Storage API)
+>
+> ⚠️ ส่วน `delete from auth.users` ก็ถูก permission classifier บล็อกเมื่อเรียกผ่าน MCP —
+> ให้ผู้ใช้รันเองใน Supabase SQL editor
+
+1. ลบไฟล์ทั้งหมดในหน้า Storage → bucket `profile-images` (ลบทั้งโฟลเดอร์ที่ชื่อเป็น user id)
+2. แล้วรันใน SQL editor:
 
 ```sql
-delete from storage.objects where bucket_id = 'profile-images';
 delete from auth.users;
 ```
+
+`public.profiles` ไม่ต้องลบเอง — `profiles_user_id_fkey` เป็น
+`REFERENCES auth.users(id) ON DELETE CASCADE` อยู่แล้ว แถวจะหายตามไปเอง
 
 ติดตั้งและเปิดแอปใหม่ แล้วทำครบทั้งลำดับ พร้อม screenshot ทุกขั้น:
 
