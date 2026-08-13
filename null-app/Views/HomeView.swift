@@ -43,5 +43,5 @@ struct HomeView: View {
     NavigationStack {
         HomeView()
     }
-    .environment(ProfileStore(fileURL: URL.temporaryDirectory.appending(path: "preview.json")))
+    .environment(ProfileStore(cacheURL: URL.temporaryDirectory.appending(path: "preview.json")))
 }

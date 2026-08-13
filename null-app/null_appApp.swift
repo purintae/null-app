@@ -9,21 +9,46 @@ import SwiftUI
 
 @main
 struct null_appApp: App {
-    /// สร้างครั้งเดียวตอนแอปเริ่ม การอ่านไฟล์เกิดขึ้นใน initializer
-    @State private var store = ProfileStore()
+    @State private var session = SessionStore()
+    @State private var profileStore = ProfileStore()
 
     /// ธีมที่ผู้ใช้เลือกใน Settings ต้องอ่านที่รากเพื่อครอบทั้งแอป
     @AppStorage("appearance") private var appearance: AppearanceSetting = .system
 
     var body: some Scene {
         WindowGroup {
-            // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
-            NavigationStack {
-                HomeView()
+            Group {
+                switch session.state {
+                case .loading:
+                    ProgressView()
+
+                case .signedOut:
+                    signUpScreen
+
+                case .signedIn:
+                    if profileStore.needsProfile {
+                        // สมัครค้างกลางทาง — มีบัญชีแล้วแต่ยังไม่มีโปรไฟล์
+                        // ให้กรอกชื่อเพื่อสร้างแถวให้ครบ ไม่ใช่สร้างบัญชีใหม่ซ้อน
+                        signUpScreen
+                    } else {
+                        // Home เป็นรากเดียวของแอป ส่วน Profile ถูก push จากไอคอนบนแถบบนของ Home
+                        NavigationStack {
+                            HomeView()
+                        }
+                        .environment(profileStore)
+                        .task { await profileStore.refresh() }
+                    }
+                }
             }
-            .environment(store)
             .preferredColorScheme(appearance.colorScheme)
         }
     }
-}
 
+    /// ใช้ร่วมกันทั้งการสมัครใหม่และการกู้คืนบัญชีที่ไม่มีโปรไฟล์
+    /// ทั้งสองเส้นทางจบด้วยการมีแถวใน profiles จึงต้อง refresh เหมือนกัน
+    private var signUpScreen: some View {
+        SignUpView(session: session) {
+            await profileStore.refresh()
+        }
+    }
+}

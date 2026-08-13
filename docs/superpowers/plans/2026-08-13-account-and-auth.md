@@ -1196,6 +1196,9 @@ cd "$PROJ" && git add null-app && git commit -m "Move profile images to Supabase
                     }
 ```
 
+`SignUpView` ต้องเพิ่ม `import Supabase` ด้วย เพราะบรรทัดถัดไปอ้าง `Backend.client.auth`
+ซึ่งไฟล์นี้เดิม import แค่ SwiftUI (ไม่งั้น build พังทั้งสองแพลตฟอร์ม)
+
 และใน `SignUpView.submit()` เปลี่ยนให้เลือกเส้นทางตามว่ามีบัญชีอยู่แล้วหรือยัง:
 
 ```swift
@@ -1215,6 +1218,12 @@ cd "$PROJ" && git add null-app && git commit -m "Move profile images to Supabase
     }
 ```
 
+**เส้นทางกู้คืนต้องมีทางออก** — หลัง `createProfile` สำเร็จ `needsProfile` ยังเป็น true อยู่
+เพราะมีแต่ `ProfileStore.refresh()` เท่านั้นที่เปลี่ยนมันได้ และ `refresh()` ถูกแขวนไว้กับ
+สาขา Home ที่ยังไม่ถูกแสดง ผู้ใช้จึงติดอยู่ที่หน้าสมัครวนไม่จบ
+แก้โดยให้ `SignUpView` มี `var onProfileCreated: () async -> Void = {}` ที่เรียกหลังสำเร็จ
+แล้ว `null_appApp` ส่ง `{ await profileStore.refresh() }` เข้าไปทั้งสองสาขา
+
 - [ ] **Step 2: ตรวจว่า macOS ยัง build ผ่าน**
 
 ```bash
@@ -1225,14 +1234,32 @@ xcodebuild -scheme null-app -project "$PROJ/null-app.xcodeproj" -destination 'pl
 
 ```bash
 xcrun simctl uninstall C7CBA4C6-2050-41B9-8DD1-A5DB6D005FEF purin.null-app
+xcrun simctl keychain C7CBA4C6-2050-41B9-8DD1-A5DB6D005FEF reset
 ```
 
-ลบแถวเดิมออกจากฐานข้อมูลด้วย `execute_sql` เพื่อให้เริ่มจากศูนย์จริง ๆ:
+**ต้องล้าง keychain ด้วย** — `uninstall` อย่างเดียวไม่พอ supabase-swift เก็บ session ไว้ใน
+Keychain ซึ่งอยู่รอดข้ามการลบแอป ถ้าไม่ล้าง แอปจะเปิดเข้า Home ในฐานะผู้ใช้คนเดิมทันที
+และการทดสอบ "เปิดครั้งแรก" จะไม่ได้ทดสอบอะไรเลย (เจอจริงตอนทำ Task 5)
+
+ลบแถวเดิมออกจากฐานข้อมูลเพื่อให้เริ่มจากศูนย์จริง ๆ:
+
+> ⚠️ **ลบไฟล์ใน Storage ด้วย SQL ไม่ได้แล้ว** — Supabase มี trigger `storage.protect_delete()`
+> ที่ปฏิเสธ `delete from storage.objects` ตรง ๆ ด้วย `ERROR 42501: Direct deletion from
+> storage tables is not allowed. Use the Storage API instead.`
+> ให้ลบไฟล์ผ่านหน้า Storage ของ dashboard แทน (หรือผ่าน Storage API)
+>
+> ⚠️ ส่วน `delete from auth.users` ก็ถูก permission classifier บล็อกเมื่อเรียกผ่าน MCP —
+> ให้ผู้ใช้รันเองใน Supabase SQL editor
+
+1. ลบไฟล์ทั้งหมดในหน้า Storage → bucket `profile-images` (ลบทั้งโฟลเดอร์ที่ชื่อเป็น user id)
+2. แล้วรันใน SQL editor:
 
 ```sql
-delete from storage.objects where bucket_id = 'profile-images';
 delete from auth.users;
 ```
+
+`public.profiles` ไม่ต้องลบเอง — `profiles_user_id_fkey` เป็น
+`REFERENCES auth.users(id) ON DELETE CASCADE` อยู่แล้ว แถวจะหายตามไปเอง
 
 ติดตั้งและเปิดแอปใหม่ แล้วทำครบทั้งลำดับ พร้อม screenshot ทุกขั้น:
 
