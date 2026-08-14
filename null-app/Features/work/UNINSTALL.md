@@ -11,9 +11,17 @@
 3. build ทั้งสองแพลตฟอร์ม — **ต้องผ่านโดยไม่ต้องแตะไฟล์อื่น**
    - `xcodebuild -scheme null-app -destination 'generic/platform=iOS Simulator' build`
    - `xcodebuild -scheme null-app -destination 'platform=macOS' build`
-4. งานของผู้ใช้อยู่ใน `f_work.item` / `stage` / `task` และกู้ไม่ได้หลังข้อ 7 —
-   ถ้ายังอยากได้คืน ให้ export ก่อน
-   (`f_work.work_type` เป็น reference data ไม่ใช่ข้อมูลของผู้ใช้ ไม่ต้อง export)
+4. งานของผู้ใช้อยู่ใน `f_work.item` และ `f_work.stage` และกู้ไม่ได้หลังข้อ 7 —
+   export ก่อนด้วย `execute_sql` (`f_work.work_type` เป็น reference data ไม่ต้อง export):
+
+   ```sql
+   select i.name, i.description, i.requested_by, i.badge, i.archived_at,
+          s.code, s.name as stage_name, s.position,
+          s.planned_start, s.planned_end, s.actual_start, s.actual_end
+   from f_work.item i
+   left join f_work.stage s on s.item_id = i.id
+   order by i.created_at, s.position;
+   ```
 5. เอา `f_work` ออกจาก Exposed schemas (Project Settings → Integrations → Data API → แท็บ Settings)
    **ก่อน** ข้อ 7 เสมอ — ลำดับนี้กลับกันไม่ได้ การ drop schema ที่ยังอยู่ในรายการทำให้ PostgREST
    สร้าง schema cache ไม่ได้ และตอบ `PGRST002` กับทุก request ของโปรเจกต์ รวมถึงตารางของ core
