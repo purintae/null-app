@@ -15,9 +15,7 @@ struct WorkFeature: Feature {
     let title = "Work"
     let systemImage = "briefcase"
 
-    /// `userID` ยังไม่ถูกใช้จนกว่าจะถึงรอบที่อ่านข้อมูลจริง — รับไว้ตามสัญญาของ protocol
-    /// เพราะการพึ่งพาที่โผล่อยู่ในลายเซ็นคือการพึ่งพาที่มองเห็นได้
     func makeRoot(userID: UUID) -> AnyView {
-        AnyView(WorkRootView())
+        AnyView(WorkRootView(userID: userID))
     }
 }

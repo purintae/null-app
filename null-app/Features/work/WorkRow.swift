@@ -68,7 +68,7 @@ nonisolated struct WorkItemRow: Codable, Sendable, Identifiable {
     let requestedBy: String?
     let badge: String?
     let updatedAt: Date
-    let stage: [WorkStageRow]
+    var stage: [WorkStageRow]
 
     enum CodingKeys: String, CodingKey {
         case id, name, description, badge, stage

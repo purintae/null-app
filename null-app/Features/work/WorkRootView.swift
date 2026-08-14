@@ -13,6 +13,8 @@ import SwiftUI
 /// ตัวกรองประเภทงานยังไม่มีในรอบนี้โดยตั้งใจ — รายชื่อประเภทมาจากตาราง `work_type`
 /// ที่ยังไม่ถูกสร้าง และ spec ห้ามเขียนชื่อประเภทตายตัวไว้ใน view
 struct WorkRootView: View {
+    let userID: UUID
+
     var body: some View {
         VStack(spacing: 0) {
             summary
@@ -95,6 +97,6 @@ private struct SummaryTile: View, Identifiable {
 
 #Preview {
     NavigationStack {
-        WorkRootView()
+        WorkRootView(userID: UUID())
     }
 }
