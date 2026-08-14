@@ -6,7 +6,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 `null-app` is a **standalone SwiftUI application** and a self-contained git repository. It shares no code, design system, or conventions with any sibling folder under `WROKSPACE/`. The workspace-level `CLAUDE.md` at `/Users/purintae/Documents/WROKSPACE/CLAUDE.md` auto-loads and describes a documents-only workspace with "no build, test, or lint step" — **that does not apply here**. This project builds with Xcode, and the instructions in this file take precedence.
 
-The app is a real profile app backed by Supabase: sign up with a display name only (no password, no email), then your profile and images live on the server.
+The app is a real profile app backed by Supabase: sign up with a display name only (no password, no email), then your profile and images live on the server. It is also a **shell**: features plug in as self-contained modules and Home is a launcher over whatever is installed. See "Feature plugins" below — the registry ships empty on purpose.
 
 ## Commands
 
@@ -75,6 +75,22 @@ Swift side, under `null-app/`:
 - **`Models/Profile.swift`** — the view-facing model plus all name validation. `SignUpView` and `ProfileEditView` both borrow `Profile.isValid`, so there is exactly one set of naming rules.
 
 `profile.json` and the local images directory are **cache only** — the server is the source of truth. `ProfileStore.init` wipes them when there is no session, so a new account on a shared device cannot see the previous owner's profile.
+
+## Feature plugins
+
+`Core/` holds the whole plug-in contract, and it is three files:
+
+- **`Core/Feature.swift`** — what a feature must provide: `id`, `title`, `systemImage`, `makeRoot(userID:)`. `makeRoot` is called **when Home renders**, once per visible tile, not when the tile is tapped — `NavigationLink(destination:label:)` builds its destination eagerly. Keep it cheap and do no work in the root view's `init` either.
+- **`Core/FeatureRegistry.swift`** — the list of installed features, and **the only file in the project allowed to name a feature type**. Core never mentions a feature any other way. That single rule is why removing a feature is deleting a folder and a line rather than a refactor: if a second file ever knows a feature's name, the boundary has already leaked. It also validates ids at launch (`validateInstalled()`).
+- **`Core/FeatureStorage.swift`** — derives every local name from `id` (`Features/<id>/`, `f.<id>.<key>`) and sweeps the debris of features no longer installed. `nonisolated` on purpose. Use `FeatureStorage.defaultsKey(_:_:)` for `@AppStorage` keys; a hand-written `"f.notes.x"` literal is a key the sweep can drift away from.
+
+One feature owns one Postgres schema, `f_<id>`, so server-side removal is `drop schema f_<id> cascade`. Tables reference `auth.users(id) on delete cascade`, never `public.profiles`.
+
+**`id` must match `^[a-z][a-z0-9_]*$`, and be unique.** It is simultaneously the schema name, the directory name, the `UserDefaults` prefix and the SwiftUI `ForEach` identity, so a bad one fails in four places at once and none of them say why. Uppercase is the worst: Postgres folds unquoted identifiers, so `create schema f_MyFeature` makes `f_myfeature` while `.schema("f_MyFeature")` sends the exact string and never resolves. A `.` makes `f.a.b.c` unattributable to an owner; a `/` makes `directory(for:)` nest below where the sweep looks. `FeatureRegistry.validateInstalled()` runs a `precondition` at launch in every configuration, and `sweepOrphans` refuses to delete anything at all if it is handed a malformed id — fail closed, because a list you cannot trust makes "which of these is an orphan?" unanswerable.
+
+**Both install and uninstall have one step no MCP tool can do**: Supabase Dashboard → Project Settings → Integrations → Data API → Settings tab → **Exposed schemas**. The same page has an **Extra search path** field that looks like it and is not; putting the schema there fails silently. On removal, take the schema out of Exposed schemas **before** `drop schema` — a dropped schema still listed there stops PostgREST from building its schema cache, and it then answers `PGRST002` to every request in the project, core `profiles` included.
+
+Templates: `docs/superpowers/INSTALL-template.md` (SQL, RLS, the trigger that keeps `updated_at` honest, grants to `authenticated` only, and the curl that proves the exposure took effect) and `docs/superpowers/UNINSTALL-template.md`. Copy the uninstall one into a feature's folder on the day it is installed.
 
 ## Backend
 

@@ -19,7 +19,12 @@ struct null_appApp: App {
     ///
     /// ปิดใน DEBUG เพราะการคอมเมนต์ registry ออกชั่วคราวเพื่อดีบัก
     /// ไม่ควรลบข้อมูลในเครื่องทิ้ง — ผลข้างเคียงคือการยืนยันเรื่องนี้ต้อง build แบบ Release
+    ///
+    /// ส่วนการตรวจ id ทำงานทุก build และมาก่อนการกวาดเสมอ — id ที่ผิดกติกาต้องดังตั้งแต่
+    /// รันครั้งแรกของคนที่เพิ่งเติมบรรทัดเข้า registry ไม่ใช่ตอนขึ้น Release ให้ผู้ใช้
     init() {
+        FeatureRegistry.validateInstalled()
+
         #if !DEBUG
         FeatureStorage.sweepOrphans(
             installed: Set(FeatureRegistry.installed.map(\.id)),

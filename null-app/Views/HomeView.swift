@@ -86,6 +86,10 @@ private struct FeatureTile: View {
                 .lineLimit(1)
         }
         .foregroundStyle(.primary)
+        // ไม่งั้น VoiceOver อ่านคำบรรยาย SF Symbol ต่อด้วยชื่อ ("square dashed, Example")
+        // แก้ที่ core ครั้งเดียวเพื่อให้ทุกฟีเจอร์ที่เสียบเข้ามาได้ผลนี้ไปเลย
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(title)
     }
 }
 
