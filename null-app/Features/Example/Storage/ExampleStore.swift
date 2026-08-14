@@ -30,23 +30,33 @@ nonisolated struct ExampleNote: Codable {
 final class ExampleStore {
     private(set) var body = ""
 
+    /// แยกจาก "โหลดแล้วได้โน้ตว่าง" — save() เป็น upsert ทับแถวเดิม
+    /// ถ้าโหลดพังแล้วยังถือว่า body ว่างคือของจริง ผู้ใช้ที่มีโน้ตอยู่แล้วแต่ออฟไลน์
+    /// จะพิมพ์ทับแล้วกด Save ได้ ซึ่งจะเขียนทับโน้ตเดิมบน server แบบเงียบ ๆ
+    private(set) var loadFailed = false
+
     private let userID: UUID
 
     init(userID: UUID) {
         self.userID = userID
     }
 
-    /// ไม่ throw เพราะการเปิดหน้าตอนไม่มีเน็ตควรได้หน้าว่าง ไม่ใช่ error กลางหน้าจอ
+    /// เปลี่ยนจาก try? เป็น do/catch เพราะตอนนี้ต้องแยกว่าโหลดพังหรือโหลดสำเร็จแล้วว่าง
     func load() async {
-        let rows: [ExampleNote]? = try? await Backend.client
-            .schema("f_example")
-            .from("note")
-            .select()
-            .eq("user_id", value: userID)
-            .execute()
-            .value
+        do {
+            let rows: [ExampleNote] = try await Backend.client
+                .schema("f_example")
+                .from("note")
+                .select()
+                .eq("user_id", value: userID)
+                .execute()
+                .value
 
-        body = rows?.first?.body ?? ""
+            body = rows.first?.body ?? ""
+            loadFailed = false
+        } catch {
+            loadFailed = true
+        }
     }
 
     /// throw เพราะการกด Save แล้วเงียบคือสิ่งที่ผู้ใช้ตีความว่าบันทึกสำเร็จ

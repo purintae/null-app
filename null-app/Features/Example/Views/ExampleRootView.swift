@@ -13,6 +13,11 @@ struct ExampleRootView: View {
     @State private var draft = ""
     @State private var saveError: String?
 
+    /// ล็อกช่องพิมพ์ไว้จนกว่า .task จะโหลดเสร็จรอบแรก
+    /// กัน race: ถ้าเปิดให้พิมพ์ได้ทันทีที่ view render ผู้ใช้อาจพิมพ์อยู่พอดีตอนที่
+    /// load() กลับมาแล้ว draft = store.body จะไปทับสิ่งที่พิมพ์ค้างอยู่แบบเงียบ ๆ
+    @State private var isLoading = true
+
     init(userID: UUID) {
         self.userID = userID
         _store = State(initialValue: ExampleStore(userID: userID))
@@ -22,6 +27,7 @@ struct ExampleRootView: View {
         Form {
             Section("Note") {
                 TextField("Type something", text: $draft)
+                    .disabled(isLoading)
 
                 Button("Save") {
                     Task {
@@ -33,7 +39,14 @@ struct ExampleRootView: View {
                         }
                     }
                 }
-                .disabled(draft == store.body)
+                .disabled(store.loadFailed || draft == store.body)
+            }
+
+            if store.loadFailed {
+                Section {
+                    Text("Couldn't load your note. Reopen this screen to try again.")
+                        .foregroundStyle(.red)
+                }
             }
 
             if let saveError {
@@ -54,6 +67,7 @@ struct ExampleRootView: View {
         .task {
             await store.load()
             draft = store.body
+            isLoading = false
         }
     }
 }
