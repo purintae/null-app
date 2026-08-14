@@ -13,6 +13,5 @@ import Foundation
 /// ถ้าวันหนึ่งมีไฟล์ที่สองที่รู้จักชื่อฟีเจอร์ นั่นคือสัญญาณว่าเส้นแบ่งเริ่มรั่ว
 enum FeatureRegistry {
     static let installed: [any Feature] = [
-        ExampleFeature(),
     ]
 }
