@@ -15,6 +15,20 @@ struct null_appApp: App {
     /// ธีมที่ผู้ใช้เลือกใน Settings ต้องอ่านที่รากเพื่อครอบทั้งแอป
     @AppStorage("appearance") private var appearance: AppearanceSetting = .system
 
+    /// กวาดของของฟีเจอร์ที่ถูกถอดออกไปแล้ว ตัดสินจาก registry ปัจจุบันเสมอ
+    ///
+    /// ปิดใน DEBUG เพราะการคอมเมนต์ registry ออกชั่วคราวเพื่อดีบัก
+    /// ไม่ควรลบข้อมูลในเครื่องทิ้ง — ผลข้างเคียงคือการยืนยันเรื่องนี้ต้อง build แบบ Release
+    init() {
+        #if !DEBUG
+        FeatureStorage.sweepOrphans(
+            installed: Set(FeatureRegistry.installed.map(\.id)),
+            root: FeatureStorage.root,
+            defaults: .standard
+        )
+        #endif
+    }
+
     var body: some Scene {
         WindowGroup {
             Group {
