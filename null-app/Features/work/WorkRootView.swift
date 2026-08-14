@@ -68,8 +68,8 @@ private struct SummaryTile: View, Identifiable {
 
     /// ค่าของรอบที่ยังไม่มีข้อมูล — ศูนย์ทั้งหมด รอบหน้าค่านี้จะมาจากการนับจริง
     static let roundOne = [
-        SummaryTile(label: "Running", value: 0),
-        SummaryTile(label: "Behind", value: 0),
+        SummaryTile(label: "Active", value: 0),
+        SummaryTile(label: "Overdue", value: 0),
         SummaryTile(label: "Due this month", value: 0),
         SummaryTile(label: "Starting soon", value: 0),
     ]
