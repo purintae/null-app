@@ -1001,9 +1001,11 @@ task นี้ทดสอบสถาปัตยกรรม ไม่ใช�
 3. build ทั้งสองแพลตฟอร์ม — **ต้องผ่านโดยไม่ต้องแตะไฟล์อื่น**
    - `xcodebuild -scheme null-app -destination 'generic/platform=iOS Simulator' build`
    - `xcodebuild -scheme null-app -destination 'platform=macOS' build`
-4. ถ้าฟีเจอร์เก็บข้อมูลที่ผู้ใช้อาจอยากได้คืน ให้ export ก่อน — ข้อ 5 ลบถาวรและกู้ไม่ได้
-5. `drop schema f_<id> cascade;` ผ่าน `apply_migration`
-6. เอา `f_<id>` ออกจาก Exposed schemas ใน Supabase Dashboard
+4. ถ้าฟีเจอร์เก็บข้อมูลที่ผู้ใช้อาจอยากได้คืน ให้ export ก่อน — ข้อ 6 ลบถาวรและกู้ไม่ได้
+5. เอา `f_<id>` ออกจาก Exposed schemas (Project Settings → Data API) **ก่อน** ข้อ 6 เสมอ
+   — ลำดับนี้กลับกันไม่ได้ การ drop schema ที่ยังอยู่ในรายการทำให้ PostgREST สร้าง schema cache
+   ไม่ได้ และตอบ `PGRST002` กับทุก request ของโปรเจกต์ รวมถึงตารางของ core
+6. `drop schema f_<id> cascade;` ผ่าน `apply_migration`
 7. ลบ bucket `f_<id>` ผ่าน Storage API หรือ Dashboard ถ้าฟีเจอร์นั้นมี
    (ลบ `storage.objects` ด้วย SQL ไม่ได้ — trigger `storage.protect_delete()` ปฏิเสธ)
 8. ของค้างในเครื่องผู้ใช้ไม่ต้องทำอะไร `FeatureStorage.sweepOrphans()` เก็บกวาดเองตอนเปิดแอป
@@ -1084,7 +1086,24 @@ git status --porcelain
 
 Expected: มีเฉพาะไฟล์ใต้ `null-app/Features/Example/` ที่ถูกลบ และ `null-app/Core/FeatureRegistry.swift` ที่ถูกแก้ — ไม่มีชื่ออื่นเลย
 
-- [ ] **Step 8: ลบ schema**
+- [ ] **Step 8: เอา schema ออกจาก Exposed schemas — ต้องทำก่อน drop**
+
+**ลำดับนี้กลับกันไม่ได้** ถ้า drop schema ทั้งที่ชื่อยังอยู่ในรายการ PostgREST จะสร้าง schema cache
+ไม่ได้และตอบ `PGRST002` กับ**ทุก** request ของโปรเจกต์ รวมถึง `public.profiles` ของ core ด้วย
+เท่ากับการถอดฟีเจอร์ทดสอบทำให้แอปทั้งตัวใช้งานไม่ได้ จนกว่าจะมีคนไปแก้ค่าใน Dashboard
+
+แจ้งผู้ใช้: Supabase Dashboard → Project Settings → **Data API** → **Exposed schemas** →
+ลบ `f_example` ออก (เหลือ `public` กับ `graphql_public`) → Save
+
+**รอผู้ใช้ยืนยันก่อนไปต่อ** จากนั้นตรวจด้วยตัวเองว่าค่าเปลี่ยนจริง:
+
+```bash
+curl -s -H "apikey: sb_publishable_TzWBdrFCJzBBL8wlrU-ksg_eJyYZto1" -H "Accept-Profile: f_example" "https://yqeqzplufezlnudsxzql.supabase.co/rest/v1/note?select=user_id&limit=1"
+```
+
+Expected: `PGRST106` พร้อมข้อความ `Only the following schemas are exposed: public, graphql_public`
+
+- [ ] **Step 9: ลบ schema**
 
 เรียก `apply_migration` ด้วย `name` = `drop_f_example`:
 
@@ -1100,7 +1119,7 @@ select nspname from pg_namespace where nspname = 'f_example';
 
 Expected: ไม่มีแถว
 
-- [ ] **Step 9: ยืนยันว่า core ไม่ได้หายไปด้วย**
+- [ ] **Step 10: ยืนยันว่า core ไม่ได้หายไปด้วย และ Data API ยังทำงาน**
 
 `execute_sql`:
 
@@ -1110,11 +1129,13 @@ select count(*) as profiles_alive from public.profiles;
 
 Expected: จำนวนแถวเท่าเดิมกับก่อนถอด — `drop schema cascade` ที่ลากของ core ไปด้วยคือความล้มเหลวของสถาปัตยกรรม
 
-- [ ] **Step 10: แจ้งผู้ใช้ให้เอา schema ออกจาก Exposed schemas**
+แล้วยิงผ่าน REST จริงเพื่อยืนยันว่า schema cache ยังสร้างได้หลัง drop:
 
-Supabase Dashboard → Project Settings → API → Exposed schemas → ลบ `f_example` → Save
+```bash
+curl -s -o /dev/null -w "%{http_code}\n" -H "apikey: sb_publishable_TzWBdrFCJzBBL8wlrU-ksg_eJyYZto1" "https://yqeqzplufezlnudsxzql.supabase.co/rest/v1/profiles?select=user_id&limit=1"
+```
 
-รอผู้ใช้ยืนยันก่อนไปต่อ
+Expected: `200` — ถ้าได้ `503` หรือ `PGRST002` แปลว่าลำดับใน Step 8 ถูกข้าม
 
 - [ ] **Step 11: พิสูจน์ว่าของในเครื่องถูกกวาด — ต้อง build แบบ Release**
 
