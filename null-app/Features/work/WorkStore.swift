@@ -60,6 +60,9 @@ final class WorkStore {
             }
             types = loadedTypes
             loadFailed = false
+        } catch is CancellationError {
+            // SwiftUI cancels this task when the view disappears (e.g. quick back-navigation).
+            // That is not a load failure — leave loadFailed untouched so a stale error doesn't flash.
         } catch {
             loadFailed = true
         }
