@@ -63,18 +63,25 @@ struct WorkRootView: View {
         }
     }
 
-    /// งานที่ผ่านทั้งตัวกรองประเภทและตัวกรองสถานะ
+    /// งานที่ผ่านตัวกรองประเภทแล้ว — ทั้งตัวนับสี่ใบและรายการข้างล่างต้องอ่านจากตัวนี้ตัวเดียว
+    /// ไม่ใช่กรองประเภทแยกกันคนละที่ ไม่งั้นวันหนึ่งจะมีที่ใดที่หนึ่งลืมเช็ค activeType
+    /// แล้วตัวนับกับรายการจะไม่ตรงกันตอนเลือก chip ประเภทพร้อมกับใบสรุป
+    /// (ตัวนับต้องนับเฉพาะในประเภทที่กำลังกรองอยู่ ไม่ใช่นับทั้งหมดแล้วเอาไปโชว์ข้างใบที่ถูกจำกัดประเภท)
+    private var typeFilteredItems: [WorkItemRow] {
+        guard let activeType else { return store.items }
+        return store.items.filter { $0.typeCode == activeType }
+    }
+
+    /// งานที่ผ่านทั้งตัวกรองประเภทและตัวกรองสถานะ — ต่อจาก typeFilteredItems เสมอ
     private var visibleItems: [WorkItemRow] {
-        store.items.filter { item in
-            if let activeType, item.typeCode != activeType { return false }
-            if let activeFilter,
-               !activeFilter.matches(item.stage, today: today, calendar: calendar) { return false }
-            return true
+        typeFilteredItems.filter { item in
+            guard let activeFilter else { return true }
+            return activeFilter.matches(item.stage, today: today, calendar: calendar)
         }
     }
 
     private func count(_ filter: WorkFilter) -> Int {
-        store.items.filter { filter.matches($0.stage, today: today, calendar: calendar) }.count
+        typeFilteredItems.filter { filter.matches($0.stage, today: today, calendar: calendar) }.count
     }
 
     private var summary: some View {
@@ -130,6 +137,10 @@ struct WorkRootView: View {
         }
     }
 
+    /// พื้นที่แตะขั้นต่ำตาม HIG (44pt) — capsule ที่เห็นยังเท่าเดิม พื้นที่แตะที่มองไม่เห็น
+    /// ขยายออกรอบ ๆ มันแทน ไม่ใช่ดันด้วย padding จนตัว capsule เองอ้วนขึ้น
+    private static let minTapTarget: CGFloat = 44
+
     private func chip(label: String, isOn: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(label)
@@ -141,6 +152,8 @@ struct WorkRootView: View {
                          : AnyShapeStyle(.quaternary.opacity(0.4)),
                     in: Capsule()
                 )
+                .frame(minHeight: Self.minTapTarget)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .foregroundStyle(.primary)
@@ -163,7 +176,7 @@ struct WorkRootView: View {
                 systemImage: "briefcase",
                 description: Text(
                     store.items.isEmpty
-                        ? "Projects and requests will show up here."
+                        ? "Your work will show up here."
                         : "Tap the selected filter again to clear it."
                 )
             )
