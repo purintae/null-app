@@ -94,21 +94,29 @@ struct WorkCard: View {
                 HStack(spacing: 6) {
                     Text(stage)
                         .lineLimit(1)
-                    Text("·")
-                        .foregroundStyle(.tertiary)
-                    Text(badge)
-                        .lineLimit(1)
+                    badgeChip(badge)
                 }
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(stage)
-                    Text(badge)
+                    badgeChip(badge)
                 }
             }
         } else if let stage = currentStageText {
             Text(stage)
         } else if let badge = badgeText {
-            Text(badge)
+            badgeChip(badge)
         }
+    }
+
+    /// badge เป็นวัตถุคนละชนิดกับชื่อ stage ไม่ใช่ข้อความอีกก้อนที่ต่อด้วย `·` —
+    /// ชื่อ stage เองมี `·` อยู่ในตัว (เช่น `Requirement · IT`) ใช้ตัวเดียวกันเป็นตัวคั่นซ้ำ
+    /// อีกชั้นจึงอ่านไม่ออกว่าอันไหนคั่นอะไร รูปทรง capsule ทำหน้าที่เป็นตัวคั่นแทน
+    private func badgeChip(_ text: String) -> some View {
+        Text(text)
+            .lineLimit(1)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 3)
+            .background(.quaternary, in: Capsule())
     }
 }

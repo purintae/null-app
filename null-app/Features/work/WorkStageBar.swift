@@ -58,6 +58,12 @@ struct WorkStageBar: View {
                         .frame(width: width)
                         .frame(height: barHeight)
                         .background(background(for: stage.state), in: RoundedRectangle(cornerRadius: 4))
+                        .overlay {
+                            if case .ahead = stage.state {
+                                RoundedRectangle(cornerRadius: 4)
+                                    .strokeBorder(.tertiary, lineWidth: 1)
+                            }
+                        }
                         .foregroundStyle(foreground(for: stage.state))
                 }
             }
@@ -128,19 +134,25 @@ struct WorkStageBar: View {
         return max(days, Self.minWeight)
     }
 
+    /// สามสถานะต้องต่างกันที่**รูปทรง** ไม่ใช่แค่โทนเทา — เกรย์สองความเข้ม (`.quaternary` กับ
+    /// `.quaternary.opacity(0.4)`) แยกไม่ออกบนจอจริง ทั้งยังพังพร้อมกันเมื่อ dark mode, contrast
+    /// ต่ำ หรือตาบอดสี ตัดกันหมด — ตอนนี้ completed ทึบ (แท่งเต็ม), current เน้นด้วยสี accent
+    /// (สีเดียวที่สงวนไว้ให้ตาเห็นก่อน), ahead กลวง (มีแต่เส้นขอบ ไม่มีพื้น) สามรูปทรงต่างกัน
+    /// อ่านออกได้แม้ปิดสีทั้งหมด — เส้นขอบของ ahead วาดแยกที่ `.overlay` ข้างบน ฟังก์ชันนี้จึง
+    /// คืนแค่พื้นหลัง (ว่างเปล่าสำหรับ ahead)
     private func background(for state: WorkStageRow.State) -> AnyShapeStyle {
         switch state {
         case .completed: AnyShapeStyle(.quaternary)
         case .current: AnyShapeStyle(Color.accentColor)
-        case .ahead: AnyShapeStyle(.quaternary.opacity(0.4))
+        case .ahead: AnyShapeStyle(.clear)
         }
     }
 
-    private func foreground(for state: WorkStageRow.State) -> Color {
+    private func foreground(for state: WorkStageRow.State) -> AnyShapeStyle {
         switch state {
-        case .completed: .secondary
-        case .current: .white
-        case .ahead: .secondary
+        case .completed: AnyShapeStyle(.secondary)
+        case .current: AnyShapeStyle(Color.white)
+        case .ahead: AnyShapeStyle(.tertiary)
         }
     }
 
