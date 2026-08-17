@@ -144,13 +144,22 @@ struct WorkStageBar: View {
         }
     }
 
+    /// ชื่อ stage ที่ "ปัจจุบัน" ทั้งหมด — เผื่อกรณีมีมากกว่าหนึ่งเพราะ stage ทับกันได้
+    /// (ดู spec: Penetration Test เดินคาบกับ SIT & UAT, Production Verification Test คาบกับ Go-live)
+    ///
+    /// จุดเดียวที่คำนวณ "ชื่อ stage ปัจจุบันคืออะไร" — ทั้ง `accessibilitySummary` ข้างล่างและ
+    /// `WorkCard` เรียกฟังก์ชันนี้แทนที่จะคำนวณเอง เพื่อไม่ให้มีตรรกะสองชุดที่ต้องคอยให้ตรงกันเอง
+    static func currentStageNames(_ stages: [WorkStageRow]) -> [String] {
+        stages.filter { $0.state == .current }.map(\.name)
+    }
+
     /// VoiceOver อ่านชื่อ stage สามสิบตัวติดกันไม่มีประโยชน์ — สรุปให้แทน
     private var accessibilitySummary: String {
         let done = stages.filter { $0.state == .completed }.count
-        let current = stages.filter { $0.state == .current }.map(\.name).joined(separator: ", ")
+        let current = Self.currentStageNames(stages)
         if current.isEmpty {
             return "\(done) of \(stages.count) stages done"
         }
-        return "\(done) of \(stages.count) stages done, now in \(current)"
+        return "\(done) of \(stages.count) stages done, now in \(current.joined(separator: ", "))"
     }
 }
