@@ -89,4 +89,19 @@ nonisolated enum WorkFilter: String, CaseIterable, Sendable, Identifiable {
     static func isFinished(_ stages: [WorkStageRow]) -> Bool {
         !stages.isEmpty && stages.allSatisfy { $0.actualEnd != nil }
     }
+
+    /// ปฏิทินตัวเดียวของทั้งฟีเจอร์ ตรึงที่ UTC ให้ตรงกับ `WorkStageRow.dayFormatter`
+    ///
+    /// วันของ stage เป็น Postgres `date` ซึ่งไม่มีโซนเวลาติดมา การอ่านและการเขียนจึงต้อง
+    /// ตีความมันด้วยโซนเดียวกันเสมอ ไม่ใช่โซนของเครื่องผู้ใช้ — ไม่งั้นคนที่กรุงเทพฯ (UTC+7)
+    /// เลือก `2026-09-01` บน `DatePicker` จะได้ Date ที่เท่ากับ `2026-08-31T17:00Z`
+    /// แล้ว formatter ที่เป็น UTC จะเขียนลงฐานข้อมูลว่า `2026-08-31` — ผิดไปหนึ่งวันทุกครั้ง
+    /// โดยไม่มี error ใด ๆ
+    ///
+    /// ผลที่ตามมา: view ที่มี `DatePicker` ต้องใส่ `.environment(\.timeZone, ...)` ให้ตรงกับตัวนี้ด้วย
+    static let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(secondsFromGMT: 0)!
+        return c
+    }()
 }

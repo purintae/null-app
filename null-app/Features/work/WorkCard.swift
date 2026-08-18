@@ -13,29 +13,23 @@ import SwiftUI
 /// บรรทัดใต้แถบเคยมี badge ที่ผู้ใช้พิมพ์เองต่อท้ายชื่อ stage — ตัดทิ้งแล้ว
 /// รอบ 4 จะเอาบรรทัดนั้นกลับมาในรูปที่คำนวณจาก `task` แทนการพิมพ์มือ
 struct WorkCard: View {
-    let item: WorkItemRow
+    let work: WorkRow
     let today: Date
-
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(secondsFromGMT: 0)!
-        return c
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(item.name)
+            Text(work.name)
                 .font(.subheadline)
                 .fontWeight(.medium)
                 // ไทยไม่มีช่องว่างระหว่างคำ ปล่อยให้ระบบตัดบรรทัดเองได้เต็มที่
                 .fixedSize(horizontal: false, vertical: true)
 
-            if item.stage.isEmpty {
+            if work.stage.isEmpty {
                 Label("Add a timeline", systemImage: "calendar.badge.plus")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                WorkStageBar(stages: item.stage)
+                WorkStageBar(stages: work.stage)
             }
 
             if let stageText = currentStageText {
@@ -48,7 +42,7 @@ struct WorkCard: View {
 
                     Spacer(minLength: 8)
 
-                    if let late = WorkFilter.daysLate(item.stage, today: today, calendar: calendar) {
+                    if let late = WorkFilter.daysLate(work.stage, today: today, calendar: WorkFilter.calendar) {
                         Text("\(late)d late")
                             .font(.caption)
                             .foregroundStyle(.red)
@@ -61,7 +55,7 @@ struct WorkCard: View {
             HStack {
                 Spacer(minLength: 0)
 
-                Text(item.updatedAt, format: .relative(presentation: .numeric))
+                Text(work.updatedAt, format: .relative(presentation: .numeric))
                     .font(.caption2)
                     .foregroundStyle(.tertiary)
             }
@@ -78,16 +72,16 @@ struct WorkCard: View {
     /// แต่ไม่มีอันไหน "ปัจจุบัน" อยู่ในสองแบบ: จบครบทุก stage แล้ว หรือยังไม่เริ่มเลยสักอัน —
     /// ทั้งสองกรณีบอกตรง ๆ แทนที่จะปล่อยเป็นช่องว่าง
     private var currentStageText: String? {
-        guard !item.stage.isEmpty else { return nil }
-        let names = WorkStageBar.currentStageNames(item.stage)
+        guard !work.stage.isEmpty else { return nil }
+        let names = WorkStageBar.currentStageNames(work.stage)
         if !names.isEmpty { return names.joined(separator: ", ") }
-        return WorkFilter.isFinished(item.stage) ? "Finished" : "Not started yet"
+        return WorkFilter.isFinished(work.stage) ? "Finished" : "Not started yet"
     }
 }
 
 #Preview("Long Thai name wraps, doesn't truncate") {
     WorkCard(
-        item: WorkItemRow(
+        work: WorkRow(
             id: UUID(),
             typeCode: "project",
             name: "26-BP-07-02 | ปรับปรุงแอปพลิเคชัน Umay+ ระยะที่หนึ่ง สำหรับกลุ่มผู้ใช้ภายในองค์กร",

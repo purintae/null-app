@@ -1,5 +1,5 @@
 //
-//  WorkRow.swift
+//  WorkRows.swift
 //  null-app
 //
 
@@ -60,7 +60,7 @@ nonisolated struct WorkStageRow: Codable, Sendable, Identifiable {
     }
 }
 
-nonisolated struct WorkItemRow: Codable, Sendable, Identifiable {
+nonisolated struct WorkRow: Codable, Sendable, Identifiable {
     let id: UUID
     let typeCode: String
     let name: String
@@ -78,6 +78,18 @@ nonisolated struct WorkItemRow: Codable, Sendable, Identifiable {
 }
 
 nonisolated struct WorkTypeRow: Codable, Sendable, Identifiable {
+    let code: String
+    let label: String
+    let position: Int
+
+    var id: String { code }
+}
+
+/// รายการ stage มาตรฐานจากตาราง `f_work.stage_type`
+///
+/// รูปร่างเหมือน `WorkTypeRow` ทุกอย่าง แต่เป็นคนละตารางและคนละความหมาย จึงเป็นคนละ type
+/// การใช้ type เดียวกันสองที่จะทำให้ส่งรายการผิดตัวเข้า `Picker` ได้โดย compiler ไม่ทัก
+nonisolated struct WorkStageTypeRow: Codable, Sendable, Identifiable {
     let code: String
     let label: String
     let position: Int
