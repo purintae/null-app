@@ -15,9 +15,11 @@ nonisolated struct WorkStageRoute: Hashable {
 /// รายการ `stage_type` เป็น **เมนูให้ติ๊ก ไม่ใช่ลำดับบังคับ** — Work ที่ข้าม SIT ก็ไม่ติ๊ก
 /// Work ที่รวม SIT กับ UAT ก็ติ๊ก `SU` และยังตั้ง stage นอกรายการเองได้ผ่าน "Other"
 ///
-/// การเรียงลำดับใช้ปุ่มขึ้น/ลง ไม่ใช่ `.onMove` กับ `EditButton` — `EditButton` ไม่มีบน macOS
-/// และแอปนี้เป็นเป้าหมายเดียวที่ลงสี่แพลตฟอร์ม ปุ่มที่หน้าตาเหมือนกันทุกที่
-/// ชนะการมีท่าเรียงลำดับที่ใช้ได้เฉพาะ iPhone
+/// หน้านี้เป็น**รายการอย่างเดียว** ส่วนการแก้รายละเอียดอยู่ในหน้าของ stage นั้น ๆ
+/// รอบแรกเขียนเป็น `DisclosureGroup` ที่กางอยู่กับที่ แล้วเจอว่า `DatePicker` แบบ compact
+/// กินพื้นที่รับสัมผัสล้ำขึ้นไปทับ `Toggle` ที่อยู่เหนือมันในคอนเทนเนอร์เดียวกัน —
+/// stage ที่โหลดมาพร้อมวันจริงจึงกดปิดไม่ได้เลย โดยไม่มี error และหน้าจอดูปกติทุกอย่าง
+/// ดู `.superpowers/sdd/2026-08-18-work-round-3/progress.md` สำหรับหลักฐานที่ไล่มา
 struct WorkStageEditorView: View {
     let workID: UUID
     let store: WorkStore
@@ -26,6 +28,7 @@ struct WorkStageEditorView: View {
     @State private var didLoad = false
     @State private var isSaving = false
     @State private var validationMessage: String?
+    @State private var editingStage: UUID?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -49,7 +52,7 @@ struct WorkStageEditorView: View {
 
     /// `Date.formatted()` **ไม่ได้** อ่านโซนเวลาจาก environment เหมือน `DatePicker`
     /// จึงต้องบอกที่นี่เอง ไม่งั้นหัวข้อจะโชว์วันคลาดจากที่ DatePicker ข้างในแสดงหนึ่งวัน
-    private static let summaryStyle: Date.FormatStyle = {
+    static let summaryStyle: Date.FormatStyle = {
         var style = Date.FormatStyle.dateTime.day().month(.abbreviated).year()
         style.timeZone = TimeZone(secondsFromGMT: 0)!
         return style
@@ -64,68 +67,14 @@ struct WorkStageEditorView: View {
                 }
             }
 
-            ForEach($drafts) { $draft in
+            ForEach(drafts) { draft in
                 Section {
-                    DisclosureGroup {
-                        // ช่องพิมพ์รหัสกับชื่อโผล่เฉพาะ stage แบบ Other
-                        // ขั้นที่ติ๊กจากรายการได้ชื่อมาจากหลังบ้านแล้ว แก้ที่นี่ไม่ได้โดยตั้งใจ
-                        if draft.isCustom {
-                            TextField("Code", text: $draft.code)
-                            TextField("Stage name", text: $draft.name, axis: .vertical)
-                                .lineLimit(1...3)
-                        }
-
-                        DatePicker("Planned start", selection: $draft.plannedStart, displayedComponents: .date)
-                        DatePicker("Planned end", selection: $draft.plannedEnd, displayedComponents: .date)
-
-                        optionalDate("Started", date: $draft.actualStart, fallback: draft.plannedStart)
-                        optionalDate(
-                            "Finished",
-                            date: $draft.actualEnd,
-                            fallback: draft.actualStart ?? draft.plannedEnd
-                        )
-
-                        HStack {
-                            Button {
-                                move(draft.id, by: -1)
-                            } label: {
-                                Label("Earlier", systemImage: "arrow.up")
-                            }
-                            .disabled(index(of: draft.id) == 0)
-
-                            Spacer()
-
-                            Button {
-                                move(draft.id, by: 1)
-                            } label: {
-                                Label("Later", systemImage: "arrow.down")
-                            }
-                            .disabled(index(of: draft.id) == drafts.count - 1)
-                        }
-                        .buttonStyle(.borderless)
-
-                        Button("Remove this stage", role: .destructive) {
-                            drafts.removeAll { $0.id == draft.id }
-                        }
+                    Button {
+                        editingStage = draft.id
                     } label: {
-                        // หัวข้อเป็นข้อความล้วน ไม่มีปุ่ม — ปุ่มในหัวข้อของ DisclosureGroup
-                        // แย่งการแตะกับตัวพับเอง ทำให้กดปุ่มแล้วกลุ่มพับ/กางแทน
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(draft.code.isEmpty ? "New stage" : draft.code)
-                                .font(.subheadline)
-                                .fontWeight(.medium)
-
-                            Text(draft.name.isEmpty ? "Needs a name" : draft.name)
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                // ชื่อขั้นภาษาไทยไม่มีช่องว่าง ปล่อยให้ระบบตัดบรรทัดเอง
-                                .fixedSize(horizontal: false, vertical: true)
-
-                            Text("\(draft.plannedStart.formatted(Self.summaryStyle)) – \(draft.plannedEnd.formatted(Self.summaryStyle))")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
-                        }
+                        row(draft)
                     }
+                    .buttonStyle(.plain)
                 } footer: {
                     if let message = draft.validationError(calendar: WorkFilter.calendar) {
                         Text(message).foregroundStyle(.red)
@@ -151,7 +100,11 @@ struct WorkStageEditorView: View {
                 }
 
                 Button {
-                    drafts.append(WorkStageDraft(custom: nextStart, calendar: WorkFilter.calendar))
+                    let draft = WorkStageDraft(custom: nextStart, calendar: WorkFilter.calendar)
+                    drafts.append(draft)
+                    // stage แบบ Other ยังไม่มีรหัสและชื่อ พาไปกรอกทันทีดีกว่าปล่อยให้
+                    // ผู้ใช้เจอแถวที่ฟ้องว่า "Code can't be empty" แล้วต้องเดาว่าต้องกดตรงไหน
+                    editingStage = draft.id
                 } label: {
                     Label("Other…", systemImage: "plus")
                 }
@@ -184,6 +137,22 @@ struct WorkStageEditorView: View {
                 Button("Save", action: save).disabled(isSaving)
             }
         }
+        // ผูกกับ `@State` ไม่ใช่จับคู่ตามชนิด — `navigationDestination(for:)` ไม่ทำงานในสแตกนี้
+        // เพราะ Home push ฟีเจอร์เข้ามาด้วย `NavigationLink(destination:)` แบบเก่า
+        .navigationDestination(item: $editingStage) { id in
+            if let index = drafts.firstIndex(where: { $0.id == id }) {
+                WorkStageDetailView(
+                    draft: $drafts[index],
+                    canMoveEarlier: index > 0,
+                    canMoveLater: index < drafts.count - 1,
+                    move: { offset in move(id, by: offset) },
+                    remove: {
+                        drafts.removeAll { $0.id == id }
+                        editingStage = nil
+                    }
+                )
+            }
+        }
         .task {
             guard !didLoad else { return }
             let knownCodes = Set(store.stageTypes.map(\.code))
@@ -193,44 +162,35 @@ struct WorkStageEditorView: View {
         .onDisappear { store.clearSaveError() }
     }
 
-    /// toggle ที่แทน `Date?` ได้จริง — ปิดแล้วค่าเป็น nil ซึ่งจะกลายเป็น `null` ในสาย
-    /// ไม่ใช่คีย์ที่หายไปจาก JSON ดู `WorkPayload.swift`
-    @ViewBuilder
-    private func optionalDate(
-        _ label: String,
-        date: Binding<Date?>,
-        fallback: Date
-    ) -> some View {
-        Toggle(label, isOn: Binding(
-            get: { date.wrappedValue != nil },
-            set: { isOn in date.wrappedValue = isOn ? (date.wrappedValue ?? fallback) : nil }
-        ))
+    private func row(_ draft: WorkStageDraft) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(draft.code.isEmpty ? "New stage" : draft.code)
+                    .font(.subheadline)
+                    .fontWeight(.medium)
 
-        if date.wrappedValue != nil {
-            DatePicker(
-                "\(label) on",
-                selection: Binding(
-                    get: { date.wrappedValue ?? fallback },
-                    // `guard` บรรทัดนี้คือสิ่งที่ทำให้ปิด toggle แล้วปิดได้จริง
-                    // ตอน toggle เซ็ต nil ตัว DatePicker ที่กำลังจะหายไปยังเขียนค่าที่มันถืออยู่
-                    // กลับมาในรอบ update เดียวกัน วันจึงฟื้นคืนและ toggle เด้งกลับเป็นเปิด
-                    // — บั๊กที่ compile ผ่านและหน้าจอดูปกติ เจอได้ด้วยการกดจริงเท่านั้น
-                    set: { newValue in
-                        guard date.wrappedValue != nil else { return }
-                        date.wrappedValue = newValue
-                    }
-                ),
-                displayedComponents: .date
-            )
+                Text(draft.name.isEmpty ? "Needs a name" : draft.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    // ชื่อขั้นภาษาไทยไม่มีช่องว่าง ปล่อยให้ระบบตัดบรรทัดเอง
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Text("\(draft.plannedStart.formatted(Self.summaryStyle)) – \(draft.plannedEnd.formatted(Self.summaryStyle))")
+                    .font(.caption2)
+                    .foregroundStyle(.tertiary)
+            }
+
+            Spacer(minLength: 8)
+
+            Image(systemName: "chevron.right")
+                .font(.caption)
+                .foregroundStyle(.tertiary)
         }
-    }
-
-    private func index(of id: UUID) -> Int {
-        drafts.firstIndex { $0.id == id } ?? 0
+        .contentShape(Rectangle())
     }
 
     private func move(_ id: UUID, by offset: Int) {
-        let from = index(of: id)
+        guard let from = drafts.firstIndex(where: { $0.id == id }) else { return }
         let to = from + offset
         guard drafts.indices.contains(to) else { return }
         drafts.swapAt(from, to)
@@ -253,5 +213,113 @@ struct WorkStageEditorView: View {
             isSaving = false
             if ok { dismiss() }
         }
+    }
+}
+
+/// แก้ stage หนึ่งอัน
+///
+/// **`Toggle` กับ `DatePicker` ของมันอยู่คนละ `Section` โดยตั้งใจ ห้ามยุบรวมกัน** —
+/// `DatePicker` แบบ compact กินพื้นที่รับสัมผัสล้ำขึ้นไปทับแถวที่อยู่เหนือมันในคอนเทนเนอร์
+/// เดียวกัน ทำให้ `Toggle` กดไม่ติดเลยเมื่อ `DatePicker` ถูกวางมาตั้งแต่เฟรมแรก
+/// เป็นบั๊กที่ compile ผ่าน หน้าจอดูถูกต้อง และเจอได้ด้วยการกดจริงเท่านั้น
+struct WorkStageDetailView: View {
+    @Binding var draft: WorkStageDraft
+
+    let canMoveEarlier: Bool
+    let canMoveLater: Bool
+    let move: (Int) -> Void
+    let remove: () -> Void
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        Form {
+            // ช่องพิมพ์รหัสกับชื่อโผล่เฉพาะ stage แบบ Other
+            // ขั้นที่ติ๊กจากรายการได้ชื่อมาจากหลังบ้านแล้ว แก้ที่นี่ไม่ได้โดยตั้งใจ
+            if draft.isCustom {
+                Section {
+                    TextField("Code", text: $draft.code)
+                    TextField("Stage name", text: $draft.name, axis: .vertical)
+                        .lineLimit(1...3)
+                }
+            }
+
+            Section("Planned") {
+                DatePicker("Start", selection: $draft.plannedStart, displayedComponents: .date)
+                DatePicker("End", selection: $draft.plannedEnd, displayedComponents: .date)
+            }
+
+            Section { Toggle("Started", isOn: startedToggle) }
+            if draft.actualStart != nil {
+                Section { dateRow("Started on", date: $draft.actualStart) }
+            }
+
+            Section { Toggle("Finished", isOn: finishedToggle) }
+            if draft.actualEnd != nil {
+                Section { dateRow("Finished on", date: $draft.actualEnd) }
+            }
+
+            Section("Order") {
+                Button { move(-1) } label: { Label("Earlier", systemImage: "arrow.up") }
+                    .disabled(!canMoveEarlier)
+                Button { move(1) } label: { Label("Later", systemImage: "arrow.down") }
+                    .disabled(!canMoveLater)
+            }
+
+            Section {
+                Button("Remove this stage", role: .destructive) {
+                    remove()
+                    dismiss()
+                }
+            }
+
+            if let message = draft.validationError(calendar: WorkFilter.calendar) {
+                Section {
+                    Label(message, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+            }
+        }
+        .environment(\.calendar, WorkFilter.calendar)
+        .environment(\.timeZone, WorkFilter.calendar.timeZone)
+        .navigationTitle(draft.code.isEmpty ? "New stage" : draft.code)
+        #if !os(macOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    /// toggle ที่แทน `Date?` ได้จริง — ปิดแล้วค่าเป็น nil ซึ่งจะกลายเป็น `null` ในสาย
+    /// ไม่ใช่คีย์ที่หายไปจาก JSON ดู `WorkPayload.swift`
+    private var startedToggle: Binding<Bool> {
+        Binding(
+            get: { draft.actualStart != nil },
+            set: { isOn in
+                draft.actualStart = isOn ? (draft.actualStart ?? draft.plannedStart) : nil
+                // ปิด stage ที่ไม่เคยเปิดคือสภาพที่ฐานข้อมูลปฏิเสธด้วย constraint
+                // ถอนวันเริ่มออกจึงต้องพาวันจบตามไปด้วย ไม่ใช่ปล่อยให้ฟอร์มฟ้องทีหลัง
+                if !isOn { draft.actualEnd = nil }
+            }
+        )
+    }
+
+    private var finishedToggle: Binding<Bool> {
+        Binding(
+            get: { draft.actualEnd != nil },
+            set: { isOn in
+                draft.actualEnd = isOn ? (draft.actualEnd ?? draft.actualStart ?? draft.plannedEnd) : nil
+                if isOn && draft.actualStart == nil { draft.actualStart = draft.plannedStart }
+            }
+        )
+    }
+
+    private func dateRow(_ label: String, date: Binding<Date?>) -> some View {
+        DatePicker(
+            label,
+            selection: Binding(
+                get: { date.wrappedValue ?? Date() },
+                set: { date.wrappedValue = $0 }
+            ),
+            displayedComponents: .date
+        )
     }
 }
