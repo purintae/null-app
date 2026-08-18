@@ -33,7 +33,7 @@ final class WorkStore {
             async let itemsTask: [WorkItemRow] = Backend.client
                 .schema("f_work")
                 .from("item")
-                .select("id,type_code,name,description,requested_by,badge,updated_at,stage(id,code,name,position,planned_start,planned_end,actual_start,actual_end)")
+                .select("id,type_code,name,description,requested_by,updated_at,stage(id,code,name,position,planned_start,planned_end,actual_start,actual_end)")
                 .eq("user_id", value: userID)
                 .is("archived_at", value: nil)
                 .order("updated_at", ascending: false)
