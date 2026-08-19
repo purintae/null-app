@@ -42,7 +42,7 @@ struct WorkRootView: View {
             .padding(.top, 12)
         }
         .navigationDestination(item: $editingWork) { route in
-            WorkFormView(workID: route.id, store: store)
+            WorkStageEditorView(workID: route.id, store: store)
         }
         .navigationTitle("Work")
         #if !os(macOS)

@@ -5,9 +5,12 @@
 
 import SwiftUI
 
-/// ปลายทางของ "Stages" บนหน้าแก้ Work
-nonisolated struct WorkStageRoute: Hashable {
-    let workID: UUID
+/// ปลายทางของการกดการ์ดหนึ่งใบ — หน้าของงานชิ้นนั้น
+///
+/// การกดงานคือการอยากเห็นว่ามันไปถึงไหนแล้ว ไม่ใช่การอยากแก้ชื่อ ปลายทางของการ์ด
+/// จึงเป็นรายการ stage ส่วนฟอร์มแก้รายละเอียดถอยไปเป็นปุ่มรองบนแถบบน
+nonisolated struct WorkRoute: Hashable {
+    let id: UUID
 }
 
 /// แบ่ง Stage ของ Work หนึ่งชิ้น
@@ -29,6 +32,7 @@ struct WorkStageEditorView: View {
     @State private var isSaving = false
     @State private var validationMessage: String?
     @State private var editingStage: UUID?
+    @State private var editingDetails: WorkEditRoute?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -128,7 +132,7 @@ struct WorkStageEditorView: View {
         // ถ้าลบสองบรรทัดนี้ ทุกวันที่จะคลาดไปหนึ่งวันในโซนที่นำหน้า UTC โดยไม่มี error ใด ๆ
         .environment(\.calendar, WorkFilter.calendar)
         .environment(\.timeZone, WorkFilter.calendar.timeZone)
-        .navigationTitle("Stages")
+        .navigationTitle(work?.name ?? "Work")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
@@ -136,6 +140,16 @@ struct WorkStageEditorView: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("Save", action: save).disabled(isSaving)
             }
+            ToolbarItem(placement: .secondaryAction) {
+                Button {
+                    editingDetails = WorkEditRoute(workID: workID)
+                } label: {
+                    Label("Edit details", systemImage: "pencil")
+                }
+            }
+        }
+        .navigationDestination(item: $editingDetails) { route in
+            WorkFormView(workID: route.workID, store: store)
         }
         // ผูกกับ `@State` ไม่ใช่จับคู่ตามชนิด — `navigationDestination(for:)` ไม่ทำงานในสแตกนี้
         // เพราะ Home push ฟีเจอร์เข้ามาด้วย `NavigationLink(destination:)` แบบเก่า

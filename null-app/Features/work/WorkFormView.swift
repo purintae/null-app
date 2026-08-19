@@ -5,12 +5,12 @@
 
 import SwiftUI
 
-/// ปลายทางของการกดการ์ดหนึ่งใบ
+/// ปลายทางของปุ่มแก้รายละเอียดบนหน้างาน
 ///
-/// เป็น struct ห่อ UUID ไม่ใช่ UUID เปล่า ๆ เพราะหน้าถัดไปก็ใช้ UUID เหมือนกัน
-/// `navigationDestination(for: UUID.self)` สองตัวในสแตกเดียวกันจะแย่งกันเงียบ ๆ
-nonisolated struct WorkRoute: Hashable {
-    let id: UUID
+/// เป็น struct ห่อ UUID ไม่ใช่ UUID เปล่า ๆ เพราะปลายทางอื่นในสแตกเดียวกันก็ใช้ UUID
+/// เหมือนกัน สองปลายทางที่ผูกกับชนิดเดียวกันจะแย่งกันเงียบ ๆ
+nonisolated struct WorkEditRoute: Hashable {
+    let workID: UUID
 }
 
 /// หน้าสร้าง Work และหน้าแก้ Work — view เดียว สองโหมด
@@ -27,7 +27,6 @@ struct WorkFormView: View {
     @State private var didLoadDraft = false
     @State private var isSaving = false
     @State private var confirmingDelete = false
-    @State private var editingStages: WorkStageRoute?
 
     @Environment(\.dismiss) private var dismiss
 
@@ -62,19 +61,7 @@ struct WorkFormView: View {
                 TextField("Requested by", text: $draft.requestedBy)
             }
 
-            if let work {
-                Section {
-                    Button {
-                        editingStages = WorkStageRoute(workID: work.id)
-                    } label: {
-                        LabeledContent("Stages") {
-                            Text(work.stage.isEmpty
-                                 ? "None yet"
-                                 : "\(work.stage.count) stage\(work.stage.count == 1 ? "" : "s")")
-                        }
-                    }
-                }
-
+            if work != nil {
                 Section {
                     Button("Delete this work", role: .destructive) {
                         confirmingDelete = true
@@ -97,9 +84,6 @@ struct WorkFormView: View {
                         .foregroundStyle(.red)
                 }
             }
-        }
-        .navigationDestination(item: $editingStages) { route in
-            WorkStageEditorView(workID: route.workID, store: store)
         }
         .navigationTitle(workID == nil ? "New work" : "Edit work")
         #if !os(macOS)
