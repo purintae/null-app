@@ -79,11 +79,22 @@ struct WorkStageEditorView: View {
             } else {
                 stageChips
                 stageSummary
-
-                Divider()
-
                 taskHeader
+
                 tasks
+                    // ปัดซ้าย/ขวาบนพื้นที่ task เพื่อเปลี่ยน stage — วางไว้ที่นี่ไม่ใช่ทั้งจอ
+                    // เพราะแถบชิปข้างบนเลื่อนแนวนอนอยู่แล้ว สองอย่างจะแย่งนิ้วกัน
+                    .contentShape(Rectangle())
+                    .gesture(
+                        DragGesture(minimumDistance: 24)
+                            .onEnded { value in
+                                let dx = value.translation.width
+                                let dy = value.translation.height
+                                // ต้องเป็นการปัดแนวนอนจริง ๆ ไม่ใช่การเลื่อนขึ้นลงที่เอียงนิดหน่อย
+                                guard abs(dx) > abs(dy) * 1.5, abs(dx) > 48 else { return }
+                                step(dx < 0 ? 1 : -1)
+                            }
+                    )
             }
 
             if let message = validationMessage ?? store.saveError {
@@ -217,8 +228,9 @@ struct WorkStageEditorView: View {
     /// จุดเล็กหน้าชิปบอกสถานะ ส่วนพื้นหลังบอกว่าอันไหนถูกเลือกอยู่ — แยกสองเรื่องนี้
     /// ออกจากกันคนละช่องทาง ถ้าใช้สีพื้นบอกทั้งคู่ อันที่เลือกกับอันที่กำลังทำจะแยกไม่ออก
     private var stageChips: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
                 ForEach(drafts) { draft in
                     let isOn = draft.id == selectedDraft?.id
 
@@ -247,68 +259,80 @@ struct WorkStageEditorView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .id(draft.id)
                     .accessibilityLabel(displayName(draft))
                     .accessibilityAddTraits(isOn ? [.isSelected] : [])
+                    }
                 }
+                .padding(.horizontal)
             }
-            .padding(.horizontal)
+            // เปลี่ยน stage ด้วยการปัดแล้วชิปต้องเลื่อนตามมาให้เห็น
+            // ไม่งั้นปัดไปสามอันแล้วไม่รู้ว่าตอนนี้อยู่ตรงไหนของ timeline
+            .onChange(of: selectedStage) { _, id in
+                guard let id else { return }
+                withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
+            }
         }
         .padding(.top, 4)
     }
 
+    /// ขยับไป stage ถัดไป/ก่อนหน้า หยุดที่ปลายทั้งสองข้าง ไม่วนกลับ
+    /// timeline มีหัวมีท้ายจริง การวนกลับไปอันแรกจะทำให้เข้าใจผิดว่ายังมีต่อ
+    private func step(_ offset: Int) {
+        guard let current = selectedDraft,
+              let index = drafts.firstIndex(where: { $0.id == current.id })
+        else { return }
+
+        let next = index + offset
+        guard drafts.indices.contains(next) else { return }
+        withAnimation(.snappy) { selectedStage = drafts[next].id }
+    }
+
     /// stage ที่เลือก — ชื่อเต็ม ช่วงวันตามแผน และป้ายบอกว่าช้ากี่วันถ้าช้า
     /// ทั้งก้อนกดได้ พาไปหน้าที่แก้วันและลำดับ
+    /// วันของ stage ที่เลือก บรรทัดเดียวเงียบ ๆ ไม่ใช่บล็อกทึบ
+    ///
+    /// mockup ไม่มีวันที่อยู่บนหน้านี้เลย แต่ถ้าไม่มีจริง ๆ หน้านี้จะตอบไม่ได้ว่า
+    /// งานตรงแผนหรือไม่ ต้องกดเข้าไปดูทีละ stage — เก็บไว้บรรทัดเดียวและกดเข้าไปแก้ได้
     @ViewBuilder
     private var stageSummary: some View {
         if let draft = selectedDraft {
             Button {
                 editingStage = draft.id
             } label: {
-                HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(displayName(draft))
-                            .font(.headline)
-                            .foregroundStyle(.primary)
-                            // ชื่อขั้นภาษาไทยไม่มีช่องว่าง ปล่อยให้ระบบตัดบรรทัดเอง
-                            .fixedSize(horizontal: false, vertical: true)
-
-                        Text("\(draft.plannedStart.formatted(Self.summaryStyle)) – \(draft.plannedEnd.formatted(Self.summaryStyle))")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-
-                        if let message = draft.validationError(calendar: WorkFilter.calendar) {
-                            Text(message)
-                                .font(.caption)
-                                .foregroundStyle(.red)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
-
-                    Spacer(minLength: 8)
+                HStack(spacing: 6) {
+                    Text("\(draft.plannedStart.formatted(Self.summaryStyle)) – \(draft.plannedEnd.formatted(Self.summaryStyle))")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
 
                     if let late = daysLate(draft) {
-                        Text("\(late)d late")
-                            .font(.caption)
+                        Text("· \(late)d late")
+                            .font(.footnote)
                             .fontWeight(.medium)
                             .foregroundStyle(.red)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
-                            .background(Color.red.opacity(0.12), in: Capsule())
                             .accessibilityLabel(Text("\(late) day\(late == 1 ? "" : "s") late"))
                     }
 
                     Image(systemName: "chevron.right")
-                        .font(.footnote)
+                        .font(.caption2)
                         .foregroundStyle(.tertiary)
+
+                    Spacer(minLength: 0)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(14)
-                .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 12))
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .padding(.horizontal)
-            .padding(.top, 12)
+            .padding(.top, 10)
+
+            if let message = draft.validationError(calendar: WorkFilter.calendar) {
+                Text(message)
+                    .font(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal)
+                    .padding(.top, 4)
+            }
         }
     }
 
@@ -339,10 +363,7 @@ struct WorkStageEditorView: View {
     /// ตัวนับซ้าย ปุ่มเพิ่มขวา — รอบ 4 จะมีตาราง task มาเติมทั้งสองฝั่ง
     private var taskHeader: some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("Tasks")
-                .font(.headline)
-
-            Text("0/0")
+            Text("0/0 done")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
                 .monospacedDigit()
