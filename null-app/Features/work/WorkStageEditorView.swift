@@ -66,10 +66,18 @@ struct WorkStageEditorView: View {
 
     /// `Date.formatted()` **ไม่ได้** อ่านโซนเวลาจาก environment เหมือน `DatePicker`
     /// จึงต้องบอกที่นี่เอง ไม่งั้นหัวข้อจะโชว์วันคลาดจากที่ DatePicker ข้างในแสดงหนึ่งวัน
-    static let summaryStyle: Date.FormatStyle = {
-        var style = Date.FormatStyle.dateTime.day().month(.abbreviated).year()
-        style.timeZone = TimeZone(secondsFromGMT: 0)!
-        return style
+    /// `01/05/2026` — ตรึงปฏิทินเกรกอเรียนและโซนเดียวกับ `WorkFilter.calendar`
+    ///
+    /// **ห้ามปล่อยให้ตามเครื่อง** — เครื่องที่ตั้งภาษาไทยจะเรนเดอร์เป็นพุทธศักราช
+    /// แล้วบรรทัดนี้จะขึ้น 2569 ขณะที่ `DatePicker` ในหน้าแก้ (ซึ่งถูกตรึงเกรกอเรียนไว้)
+    /// ขึ้น 2026 — วันเดียวกันแต่คนละปฏิทินบนสองหน้าจอที่กดต่อกัน
+    static let dayStyle: DateFormatter = {
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.calendar = WorkFilter.calendar
+        f.timeZone = WorkFilter.calendar.timeZone
+        f.dateFormat = "dd/MM/yyyy"
+        return f
     }()
 
     var body: some View {
@@ -77,9 +85,10 @@ struct WorkStageEditorView: View {
             if drafts.isEmpty {
                 emptyStages
             } else {
-                stageChips
-                stageSummary
-                taskHeader
+                stageTabs
+                Divider()
+                stageHeader
+                progressCard
 
                 tasks
                     // ปัดซ้าย/ขวาบนพื้นที่ task เพื่อเปลี่ยน stage — วางไว้ที่นี่ไม่ใช่ทั้งจอ
@@ -118,6 +127,9 @@ struct WorkStageEditorView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 menu
+            }
+            ToolbarItem(placement: .primaryAction) {
+                addStageMenu
             }
             if isSaving {
                 ToolbarItem(placement: .confirmationAction) {
@@ -198,82 +210,52 @@ struct WorkStageEditorView: View {
 
     // ── แถบเลือก stage ───────────────────────────────────────────
 
-    /// สามสถานะเดียวกับที่การ์ดใช้ บวก "เลยกำหนด" ซึ่งเป็นสิ่งเดียวบนหน้านี้
-    /// ที่บอกว่างานตรงแผนหรือไม่ — ถ้าไม่โชว์ตรงนี้ ต้องกดเข้าไปดูทีละ stage ถึงจะรู้
-    private enum StageMark {
-        case completed, late, current, ahead
-    }
-
-    private func mark(_ draft: WorkStageDraft) -> StageMark {
-        if draft.actualEnd != nil { return .completed }
-        let calendar = WorkFilter.calendar
-        if calendar.startOfDay(for: draft.plannedEnd) < calendar.startOfDay(for: today) {
-            return .late
-        }
-        return draft.actualStart != nil ? .current : .ahead
-    }
-
-    private func markColor(_ mark: StageMark) -> AnyShapeStyle {
-        switch mark {
-        case .completed: AnyShapeStyle(.secondary)
-        case .late: AnyShapeStyle(Color.red)
-        case .current: AnyShapeStyle(Color.accentColor)
-        case .ahead: AnyShapeStyle(.tertiary)
-        }
-    }
-
-    /// ชิปเลือก stage — ตัวที่เลือกกางชื่อเต็ม ตัวที่เหลือเหลือแค่รหัส
-    /// timeline จริงมีถึงเก้าขั้น ถ้ากางชื่อเต็มทุกอันจะเลื่อนหาไม่เจอ
+    /// แท็บรหัส stage มีเส้นใต้ที่ตัวที่เลือก
     ///
-    /// จุดเล็กหน้าชิปบอกสถานะ ส่วนพื้นหลังบอกว่าอันไหนถูกเลือกอยู่ — แยกสองเรื่องนี้
-    /// ออกจากกันคนละช่องทาง ถ้าใช้สีพื้นบอกทั้งคู่ อันที่เลือกกับอันที่กำลังทำจะแยกไม่ออก
-    private var stageChips: some View {
+    /// แสดง**รหัสอย่างเดียว** ชื่อเต็มไปอยู่เป็นหัวเรื่องข้างล่าง — timeline จริงมีถึงเก้าขั้น
+    /// และขั้นที่ผู้ใช้ตั้งเองมีชื่อไทยยาว ๆ ได้ ถ้าเอาชื่อขึ้นแท็บ แถบจะยาวจนเลื่อนหาไม่เจอ
+    private var stageTabs: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                ForEach(drafts) { draft in
-                    let isOn = draft.id == selectedDraft?.id
+                HStack(spacing: 0) {
+                    ForEach(drafts) { draft in
+                        let isOn = draft.id == selectedDraft?.id
 
-                    Button {
-                        selectedStage = draft.id
-                    } label: {
-                        HStack(spacing: 6) {
-                            Circle()
-                                .fill(markColor(mark(draft)))
-                                .frame(width: 7, height: 7)
+                        Button {
+                            withAnimation(.snappy) { selectedStage = draft.id }
+                        } label: {
+                            VStack(spacing: 6) {
+                                Text(displayCode(draft))
+                                    .font(.subheadline)
+                                    .fontWeight(isOn ? .semibold : .regular)
+                                    .foregroundStyle(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                                    .lineLimit(1)
 
-                            Text(isOn ? displayName(draft) : displayCode(draft))
-                                .font(.subheadline)
-                                .fontWeight(isOn ? .semibold : .regular)
-                                .lineLimit(1)
+                                // เส้นใต้กินความกว้างเท่าแท็บเสมอ ใช้ `.clear` แทนการเอาออก
+                                // ไม่งั้นความสูงของแถบจะกระตุกทุกครั้งที่เปลี่ยนแท็บ
+                                Rectangle()
+                                    .fill(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.clear))
+                                    .frame(height: 2)
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.top, 10)
+                            .frame(minWidth: Self.minTapTarget)
+                            .contentShape(Rectangle())
                         }
-                        .foregroundStyle(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(
-                            isOn ? AnyShapeStyle(Color.accentColor.opacity(0.15))
-                                 : AnyShapeStyle(.quaternary.opacity(0.4)),
-                            in: Capsule()
-                        )
-                        .frame(minHeight: Self.minTapTarget)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .id(draft.id)
-                    .accessibilityLabel(displayName(draft))
-                    .accessibilityAddTraits(isOn ? [.isSelected] : [])
+                        .buttonStyle(.plain)
+                        .id(draft.id)
+                        .accessibilityLabel(displayName(draft))
+                        .accessibilityAddTraits(isOn ? [.isSelected] : [])
                     }
                 }
-                .padding(.horizontal)
             }
-            // เปลี่ยน stage ด้วยการปัดแล้วชิปต้องเลื่อนตามมาให้เห็น
+            // เปลี่ยน stage ด้วยการปัดแล้วแท็บต้องเลื่อนตามมาให้เห็น
             // ไม่งั้นปัดไปสามอันแล้วไม่รู้ว่าตอนนี้อยู่ตรงไหนของ timeline
             .onChange(of: selectedStage) { _, id in
                 guard let id else { return }
                 withAnimation(.snappy) { proxy.scrollTo(id, anchor: .center) }
             }
         }
-        .padding(.top, 4)
     }
 
     /// ขยับไป stage ถัดไป/ก่อนหน้า หยุดที่ปลายทั้งสองข้าง ไม่วนกลับ
@@ -288,65 +270,122 @@ struct WorkStageEditorView: View {
         withAnimation(.snappy) { selectedStage = drafts[next].id }
     }
 
-    /// stage ที่เลือก — ชื่อเต็ม ช่วงวันตามแผน และป้ายบอกว่าช้ากี่วันถ้าช้า
-    /// ทั้งก้อนกดได้ พาไปหน้าที่แก้วันและลำดับ
-    /// วันของ stage ที่เลือก บรรทัดเดียวเงียบ ๆ ไม่ใช่บล็อกทึบ
-    ///
-    /// mockup ไม่มีวันที่อยู่บนหน้านี้เลย แต่ถ้าไม่มีจริง ๆ หน้านี้จะตอบไม่ได้ว่า
-    /// งานตรงแผนหรือไม่ ต้องกดเข้าไปดูทีละ stage — เก็บไว้บรรทัดเดียวและกดเข้าไปแก้ได้
-    @ViewBuilder
-    private var stageSummary: some View {
-        if let draft = selectedDraft {
-            Button {
-                editingStage = draft.id
-            } label: {
-                HStack(spacing: 6) {
-                    Text("\(draft.plannedStart.formatted(Self.summaryStyle)) – \(draft.plannedEnd.formatted(Self.summaryStyle))")
-                        .font(.footnote)
-                        .foregroundStyle(.secondary)
+    // ── หัวเรื่องของ stage ที่เลือก ────────────────────────────────
 
-                    if let late = daysLate(draft) {
-                        Text("· \(late)d late")
-                            .font(.footnote)
-                            .fontWeight(.medium)
-                            .foregroundStyle(.red)
-                            .accessibilityLabel(Text("\(late) day\(late == 1 ? "" : "s") late"))
+    /// ชื่อเต็ม ช่วงวัน และปุ่มเพิ่ม task
+    ///
+    /// ป้าย "ช้ากี่วัน" ต่อท้ายบรรทัด Timeline แทนที่จะเป็นจุดสีบนแท็บ — มันเป็นข้อเท็จจริง
+    /// เกี่ยวกับวัน อ่านตรงที่พูดถึงวันจึงเข้าใจได้ทันทีโดยไม่ต้องจำว่าสีไหนแปลว่าอะไร
+    @ViewBuilder
+    private var stageHeader: some View {
+        if let draft = selectedDraft {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Button {
+                        editingStage = draft.id
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(displayName(draft))
+                                .font(.headline)
+                                .foregroundStyle(.primary)
+                                // ชื่อขั้นภาษาไทยไม่มีช่องว่าง ปล่อยให้ระบบตัดบรรทัดเอง
+                                .fixedSize(horizontal: false, vertical: true)
+                                .multilineTextAlignment(.leading)
+
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+
+                    HStack(spacing: 6) {
+                        Text("Timeline : \(Self.dayStyle.string(from: draft.plannedStart)) - \(Self.dayStyle.string(from: draft.plannedEnd))")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+
+                        if let late = daysLate(draft) {
+                            Text("· \(late)d late")
+                                .font(.caption)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.red)
+                                .accessibilityLabel(Text("\(late) day\(late == 1 ? "" : "s") late"))
+                        }
                     }
 
-                    Image(systemName: "chevron.right")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
-
-                    Spacer(minLength: 0)
+                    if let message = draft.validationError(calendar: WorkFilter.calendar) {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .padding(.horizontal)
-            .padding(.top, 10)
 
-            if let message = draft.validationError(calendar: WorkFilter.calendar) {
-                Text(message)
-                    .font(.caption)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal)
-                    .padding(.top, 4)
+                Spacer(minLength: 8)
+
+                Button("New Task") {}
+                    // ยังไม่มีตาราง task — ปิดปุ่มไว้ตรงไปตรงมากว่าปุ่มที่กดแล้วไม่เกิดอะไร
+                    .disabled(true)
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
             }
+            .padding(.horizontal)
+            .padding(.top, 14)
         }
     }
 
-    /// ช้ากี่วันนับจากวันจบตามแผน — นิยามเดียวกับที่การ์ดบนหน้ารายการใช้
-    private func daysLate(_ draft: WorkStageDraft) -> Int? {
-        guard draft.actualEnd == nil else { return nil }
-        let calendar = WorkFilter.calendar
-        let end = calendar.startOfDay(for: draft.plannedEnd)
-        let now = calendar.startOfDay(for: today)
-        guard end < now else { return nil }
-        return calendar.dateComponents([.day], from: end, to: now).day
+    /// แถบความคืบหน้าของ stage ที่เลือก นับจาก task ที่ปิดแล้ว
+    ///
+    /// รอบนี้ยังไม่มีตาราง `task` ตัวเลขจึงเป็น 0/0 ทุกอัน — แถบยังอยู่เพราะมันคือ
+    /// เนื้อหาหลักของหน้านี้เมื่อรอบ 4 มาถึง และเพราะ 0/0 พูดความจริงว่ายังไม่มีอะไรให้ทำ
+    @ViewBuilder
+    private var progressCard: some View {
+        if selectedDraft != nil {
+            let done = 0
+            let total = 0
+            let ratio = total == 0 ? 0 : Double(done) / Double(total)
+
+            VStack(spacing: 10) {
+                HStack {
+                    Text("Progress : \(Int(ratio * 100))%")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+
+                    Spacer()
+
+                    Text("Task ")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    + Text("\(done) / \(total)")
+                        .font(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(.primary)
+                }
+
+                GeometryReader { geometry in
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(.quaternary)
+
+                        Capsule()
+                            .fill(Color.green)
+                            .frame(width: geometry.size.width * ratio)
+                    }
+                }
+                .frame(height: 6)
+            }
+            .padding(14)
+            .background(.background.secondary, in: RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal)
+            .padding(.top, 12)
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel("Progress \(Int(ratio * 100)) percent, \(done) of \(total) tasks done")
+        }
     }
 
-    /// พื้นที่แตะขั้นต่ำตาม HIG — ชิปที่เห็นยังเท่าเดิม พื้นที่แตะขยายรอบ ๆ มันแทน
+    /// พื้นที่แตะขั้นต่ำตาม HIG
     private static let minTapTarget: CGFloat = 44
 
     private func displayCode(_ draft: WorkStageDraft) -> String {
@@ -358,27 +397,14 @@ struct WorkStageEditorView: View {
         return draft.code.isEmpty ? "New stage" : draft.code
     }
 
-    // ── task ─────────────────────────────────────────────────────
-
-    /// ตัวนับซ้าย ปุ่มเพิ่มขวา — รอบ 4 จะมีตาราง task มาเติมทั้งสองฝั่ง
-    private var taskHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            Text("0/0 done")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .monospacedDigit()
-
-            Spacer()
-
-            Button("New Task") {}
-                // ยังไม่มีตาราง task — ปิดปุ่มไว้ตรงไปตรงมากว่าปุ่มที่กดแล้วไม่เกิดอะไร
-                .disabled(true)
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-        }
-        .padding(.horizontal)
-        .padding(.top, 16)
-        .padding(.bottom, 10)
+    /// ช้ากี่วันนับจากวันจบตามแผน — นิยามเดียวกับที่การ์ดบนหน้ารายการใช้
+    private func daysLate(_ draft: WorkStageDraft) -> Int? {
+        guard draft.actualEnd == nil else { return nil }
+        let calendar = WorkFilter.calendar
+        let end = calendar.startOfDay(for: draft.plannedEnd)
+        let now = calendar.startOfDay(for: today)
+        guard end < now else { return nil }
+        return calendar.dateComponents([.day], from: end, to: now).day
     }
 
     private var tasks: some View {
@@ -414,23 +440,31 @@ struct WorkStageEditorView: View {
                 }
             }
 
-            // วนจากรายการที่เซิร์ฟเวอร์ให้มา ไม่มีชื่อขั้นตอนเขียนตายในไฟล์นี้เลย
-            // วันที่มีขั้นที่สิบ หน้านี้ไม่ต้องแก้สักบรรทัด
-            Menu("Add a stage") {
-                ForEach(unusedTypes) { type in
-                    Button("\(type.code) · \(type.label)") { add(type) }
-                }
-
-                Button {
-                    addCustom()
-                } label: {
-                    Label("Other…", systemImage: "plus")
-                }
-            }
         } label: {
             Image(systemName: "ellipsis")
         }
         .accessibilityLabel("More")
+    }
+
+    /// เพิ่ม stage อยู่บนแถบบนคู่กับ … ไม่ได้ซ่อนอยู่ในเมนู
+    /// เป็นสิ่งที่ต้องทำบ่อยที่สุดบนหน้านี้ตอนงานเพิ่งตั้ง
+    private var addStageMenu: some View {
+        Menu {
+            // วนจากรายการที่เซิร์ฟเวอร์ให้มา ไม่มีชื่อขั้นตอนเขียนตายในไฟล์นี้เลย
+            // วันที่มีขั้นที่สิบ หน้านี้ไม่ต้องแก้สักบรรทัด
+            ForEach(unusedTypes) { type in
+                Button("\(type.code) · \(type.label)") { add(type) }
+            }
+
+            Button {
+                addCustom()
+            } label: {
+                Label("Other…", systemImage: "plus")
+            }
+        } label: {
+            Image(systemName: "plus")
+        }
+        .accessibilityLabel("Add a stage")
     }
 
     private func add(_ type: WorkStageTypeRow) {
