@@ -193,7 +193,10 @@ struct WorkStageEditorView: View {
             selectedStage = drafts.first?.id
             didLoad = true
         }
-        .onDisappear { store.clearSaveError() }
+        .onDisappear {
+            store.clearSaveError()
+            store.clearLastShift()
+        }
     }
 
     /// ถอยไปหาอันแรกเสมอเมื่อตัวที่เลือกไว้ไม่มีอยู่แล้ว (เพิ่งถูกลบ หรือยังไม่ทันตั้งค่า)
@@ -450,6 +453,7 @@ struct WorkStageEditorView: View {
                     store: store,
                     isAdding: $isAddingTask
                 )
+                .id(row.id)
             }
         }
     }
