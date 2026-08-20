@@ -2,7 +2,7 @@
 
 เขียนไว้ตั้งแต่วันติดตั้งตามกติกาของโปรเจกต์ ทำตามลำดับ ห้ามข้าม
 
-**สถานะวันนี้ (18 ส.ค. 2026):** schema `f_work` และตารางทั้งสี่ (`work_type`, `stage_type`, `work`, `stage`)
+**สถานะวันนี้ (18 ส.ค. 2026):** schema `f_work` และตารางทั้งห้า (`work_type`, `stage_type`, `work`, `stage`, `task`)
 พร้อม RLS และข้อมูลทดสอบมีอยู่จริงแล้ว และ `f_work` ถูกเพิ่มใน Exposed schemas แล้ว —
 **ข้อ 4–8 มีผลจริงทุกข้อ ทำตามลำดับ** โดยเฉพาะข้อ 5 ต้องทำ**ก่อน**ข้อ 7 เสมอ ตามเหตุผลที่อธิบายไว้ที่ข้อ 5
 
@@ -17,7 +17,7 @@
    ```sql
    select w.name, w.description, w.requested_by, w.archived_at,
           s.code, s.name as stage_name, s.position,
-          s.planned_start, s.planned_end, s.actual_start, s.actual_end
+          s.planned_start, s.planned_end
    from f_work.work w
    left join f_work.stage s on s.work_id = w.id
    order by w.created_at, s.position;
@@ -33,6 +33,18 @@
    select 'stage_type', code, label, position, is_active from f_work.stage_type
    order by list, position;
    ```
+
+   **ตั้งแต่รอบ 4** งานที่เสร็จสิ้นและวันปิดของแต่ละ stage อยู่ใน `f_work.task` เท่านั้น — คอลัมน์ `actual_end` ที่เคยเก็บวันปิดของ stage ไม่มีอีกแล้ว
+   export งาน (task) ก่อนลบด้วย:
+
+   ```sql
+   select w.name as work_name, s.code as stage_code, t.title, t.done_at, t.position
+   from f_work.task t
+   join f_work.stage s on s.id = t.stage_id
+   join f_work.work w on w.id = s.work_id
+   order by w.created_at, s.position, t.position;
+   ```
+
 5. เอา `f_work` ออกจาก Exposed schemas (Project Settings → Integrations → Data API → แท็บ Settings)
    **ก่อน** ข้อ 7 เสมอ — ลำดับนี้กลับกันไม่ได้ การ drop schema ที่ยังอยู่ในรายการทำให้ PostgREST
    สร้าง schema cache ไม่ได้ และตอบ `PGRST002` กับทุก request ของโปรเจกต์ รวมถึงตารางของ core
