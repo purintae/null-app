@@ -255,9 +255,22 @@ final class WorkStore {
         }
     }
 
-    /// ติ๊กเสร็จหรือติ๊กออก แล้วถ้าการติ๊กนั้นทำให้ stage ปิดช้ากว่ากำหนด
-    /// ให้เลื่อนแผนของ stage ที่เหลือตามไปด้วยในคำขอเดียวกัน
+    /// ติ๊กเสร็จหรือติ๊กออก แล้วถ้าการติ๊กนี้เป็นตัวที่ทำให้ stage ปิด **และ** ปิดช้ากว่ากำหนด
+    /// ให้เลื่อนแผนของ stage ที่เหลือตามไปด้วย
+    ///
+    /// **ทำไมต้องเช็ค "เพิ่งปิดในคำเรียกนี้" ไม่ใช่แค่ "ปิดอยู่":** stage ที่ปิดช้าแล้วค้างอยู่
+    /// จะยังคง "ปิดช้า" ตลอดไปตามนิยาม (`closedOn` ไม่เปลี่ยนเองหลังปิด) ถ้าฟังก์ชันเลื่อนแผน
+    /// สแกนหา "stage ไหนก็ได้ที่ปิดช้า" ทุกครั้งที่มีการติ๊ก จะเจอ stage เดิมซ้ำทุกครั้งที่มีคน
+    /// ติ๊ก task ของ stage อื่นที่ไม่เกี่ยวข้องเลย แล้วเลื่อนที่เหลือซ้ำไปเรื่อย ๆ ไม่มีที่สิ้นสุด
+    /// การเช็คขอบ (edge) "ไม่ปิด → ปิด" เฉพาะของ stage ที่ task ตัวนี้สังกัดอยู่ ทำให้เลื่อน
+    /// เกิดขึ้นแค่ครั้งเดียวต่อการปิดหนึ่งครั้งจริง ๆ โดยไม่ต้องเขียนคอลัมน์ทำเครื่องหมายเพิ่ม
+    /// และไม่ทำให้ `planned_end` ของ stage ที่ปิดไปแล้วเสียความหมาย ("แผนตอนนี้") ไปเป็นอย่างอื่น
     func setTask(_ id: UUID, done: Bool, in workID: UUID) async -> Bool {
+        let owningStage = works
+            .flatMap(\.stage)
+            .first { $0.task.contains { $0.id == id } }
+        let wasClosed = owningStage?.isClosed ?? false
+
         do {
             try await Backend.client
                 .schema("f_work").from("task")
@@ -267,7 +280,12 @@ final class WorkStore {
 
             saveError = nil
             await load()
-            await shiftIfClosedLate(workID: workID)
+
+            guard let stageID = owningStage?.id else { return true }
+            let isNowClosed = works.flatMap(\.stage).first { $0.id == stageID }?.isClosed ?? false
+            if !wasClosed && isNowClosed {
+                await shiftClosedStage(stageID, in: workID)
+            }
             return true
         } catch {
             fail(error)
@@ -291,67 +309,50 @@ final class WorkStore {
         }
     }
 
-    /// หลังโหลดใหม่แล้ว ดูว่ามี stage ไหนเพิ่งปิดช้ากว่ากำหนดหรือไม่ ถ้ามีก็เลื่อนที่เหลือ
+    /// เลื่อนแผนของ stage ที่เหลือ เพราะ `stageID` เพิ่งปิด (เรียกจาก `setTask` เฉพาะตอนที่
+    /// การติ๊กครั้งนี้เป็นตัวที่ทำให้ stage เปลี่ยนจากไม่ปิด → ปิดเท่านั้น — ดูเหตุผลที่ `setTask`)
     ///
     /// **ส่งขึ้นเป็น dictionary ไม่ใช่ `WorkStagePayload`** — payload ตัวนั้นส่งทุกคอลัมน์
     /// เสมอตามกติกาของไฟล์ ซึ่งจะเขียนทับ `code`/`name` ด้วยค่าที่เราไม่ได้ตั้งใจแก้
     /// ที่นี่ต้องแตะแค่คอลัมน์ของวันเท่านั้น
     ///
-    /// **เรื่อง idempotency ที่บรีฟรอบแรกไม่ได้กันไว้:** `closed.plannedEndDate` กับ `closedOn`
-    /// ไม่เปลี่ยนเองหลัง stage ปิด ดังนั้นถ้าคำนวณ delta จากคู่นี้แล้วไม่บันทึกร่องรอยไว้เลย
-    /// ทุกครั้งที่ `setTask` ถูกเรียก — แม้ติ๊ก task ของ stage อื่นที่ไม่เกี่ยวกันเลย — ฟังก์ชันนี้
-    /// จะเจอ stage เดิมว่า "ปิดช้า" ซ้ำอีก แล้วเอา delta เดิมไปบวกทับวันที่ถูกเลื่อนไปแล้วครั้งก่อน
-    /// ซ้อนกันเรื่อย ๆ ไม่มีที่สิ้นสุด
-    ///
-    /// ทางแก้ที่นี่คือ "ใช้" ความช้าทิ้งทันทีที่เลื่อนเสร็จ: เขียน `planned_end` ของ stage
-    /// ที่เพิ่งปิดช้าให้เท่ากับ `closedOn` เอง (แตะแค่คอลัมน์เดียว ไม่ใช่ผ่าน `WorkStagePayload`
-    /// เหมือนกัน) ครั้งต่อไปที่ฟังก์ชันนี้เจอ stage ตัวเดียวกัน delta จะกลายเป็นศูนย์
-    /// (`closedOn` ลบ `plannedEnd` ที่ตอนนี้เท่ากับ `closedOn` แล้ว) และ `guard delta > 0`
-    /// จะกันไว้เอง โดยไม่ต้องมี state เพิ่มใน store หรือคอลัมน์ใหม่ในฐานข้อมูล — และไม่กระทบ
-    /// stage อื่นที่ปิดช้าเป็นเหตุการณ์แยกต่างหาก (เช่น stage ถัดไปปิดช้าเพิ่มเองในภายหลัง)
-    /// เพราะ delta ของแต่ละ stage คำนวณจากแถวของตัวเองเท่านั้น
-    private func shiftIfClosedLate(workID: UUID) async {
-        guard let work = works.first(where: { $0.id == workID }) else { return }
+    /// **ไม่มีการเขียนอะไรกลับไปที่ตัว `stageID` เอง** — `planned_end` ของ stage ที่ปิดแล้ว
+    /// ยังคงหมายถึง "แผนปัจจุบัน" เหมือนเดิม ไม่ใช่ที่เก็บร่องรอยว่าเคยเลื่อนไปแล้ว การเช็คขอบที่
+    /// `setTask` (เรียกฟังก์ชันนี้เฉพาะตอน stage เพิ่งปิดในคำเรียกนั้นจริง ๆ) คือสิ่งที่กัน
+    /// การเลื่อนซ้ำ ไม่ใช่การเขียนคอลัมน์ทำเครื่องหมายที่นี่ ผลคือถ้าคำขอนี้ล้มเหลวกลางทาง
+    /// (แอปปิดตัว, เน็ตหลุด) จะไม่มีการ retry เอง — ผู้ใช้ต้องติ๊กออกแล้วติ๊กกลับเพื่อให้ขอบ
+    /// "ไม่ปิด → ปิด" เกิดใหม่อีกครั้ง ซึ่งตั้งใจให้เป็นแบบนี้: ดีกว่าเดายังไง delta ก็ยังถูก
+    /// อยู่ ดีกว่าเสี่ยงเลื่อนซ้ำเงียบ ๆ โดยไม่มีใครรู้
+    private func shiftClosedStage(_ stageID: UUID, in workID: UUID) async {
+        guard let work = works.first(where: { $0.id == workID }),
+              let closed = work.stage.first(where: { $0.id == stageID }),
+              let closedOn = closed.closedOn
+        else { return }
 
-        let calendar = WorkFilter.calendar
-        let candidates = work.stage.filter { $0.isClosed }
+        let shifts = WorkSchedule.shifts(
+            after: closed,
+            in: work.stage,
+            closedOn: closedOn,
+            calendar: WorkFilter.calendar
+        )
+        guard !shifts.isEmpty else { return }
 
-        for closed in candidates {
-            guard let closedOn = closed.closedOn else { continue }
-
-            let shifts = WorkSchedule.shifts(
-                after: closed,
-                in: work.stage,
-                closedOn: closedOn,
-                calendar: calendar
-            )
-            guard !shifts.isEmpty else { continue }
-
-            do {
-                for shift in shifts {
-                    try await Backend.client
-                        .schema("f_work").from("stage")
-                        .update([
-                            "planned_start": WorkStageRow.dayFormatter.string(from: shift.plannedStart),
-                            "planned_end": WorkStageRow.dayFormatter.string(from: shift.plannedEnd),
-                        ])
-                        .eq("id", value: shift.stageID)
-                        .execute()
-                }
-
-                // เก็บร่องรอยว่า stage นี้ "ปิดช้า" ถูกจัดการแล้ว — ดูคำอธิบายด้านบน
+        do {
+            for shift in shifts {
                 try await Backend.client
                     .schema("f_work").from("stage")
-                    .update(["planned_end": WorkStageRow.dayFormatter.string(from: closedOn)])
-                    .eq("id", value: closed.id)
+                    .update([
+                        "planned_start": WorkStageRow.dayFormatter.string(from: shift.plannedStart),
+                        "planned_end": WorkStageRow.dayFormatter.string(from: shift.plannedEnd),
+                    ])
+                    .eq("id", value: shift.stageID)
                     .execute()
-
-                lastShiftCount = shifts.count
-                await load()
-            } catch {
-                fail(error)
             }
-            return
+
+            lastShiftCount = shifts.count
+            await load()
+        } catch {
+            fail(error)
         }
     }
 }
