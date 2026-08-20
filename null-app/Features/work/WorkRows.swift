@@ -20,15 +20,16 @@ nonisolated struct WorkStageRow: Codable, Sendable, Identifiable {
     let position: Int
     let plannedStart: String
     let plannedEnd: String
-    let actualStart: String?
-    let actualEnd: String?
+    let baselineStart: String
+    let baselineEnd: String
+    var task: [WorkTaskRow]
 
     enum CodingKeys: String, CodingKey {
-        case id, code, name, position
+        case id, code, name, position, task
         case plannedStart = "planned_start"
         case plannedEnd = "planned_end"
-        case actualStart = "actual_start"
-        case actualEnd = "actual_end"
+        case baselineStart = "baseline_start"
+        case baselineEnd = "baseline_end"
     }
 
     /// ตัวแปลงตัวเดียวของทั้งฟีเจอร์ — locale คงที่และ UTC เพื่อให้ `"2026-06-01"`
@@ -43,21 +44,78 @@ nonisolated struct WorkStageRow: Codable, Sendable, Identifiable {
 
     var plannedStartDate: Date? { Self.dayFormatter.date(from: plannedStart) }
     var plannedEndDate: Date? { Self.dayFormatter.date(from: plannedEnd) }
-    var actualStartDate: Date? { actualStart.flatMap(Self.dayFormatter.date(from:)) }
-    var actualEndDate: Date? { actualEnd.flatMap(Self.dayFormatter.date(from:)) }
+    var baselineStartDate: Date? { Self.dayFormatter.date(from: baselineStart) }
+    var baselineEndDate: Date? { Self.dayFormatter.date(from: baselineEnd) }
 
-    /// สามสถานะที่อนุมานจากวันจริง ไม่ต้องมีคอลัมน์เก็บ
+    /// **stage ที่ไม่มี task เลยปิดไม่ได้ตลอดกาล — ตั้งใจให้เป็นแบบนี้**
+    ///
+    /// ถ้าใช้กติกา "ไม่มี task ที่ค้าง" เฉย ๆ stage ที่เพิ่งสร้างจะกลายเป็นเสร็จแล้ว
+    /// ตั้งแต่วินาทีแรก เพราะยังไม่มีอะไรให้ค้าง ผลที่ยอมรับคือทุก stage ต้องมี task
+    /// อย่างน้อยหนึ่งอัน ซึ่งบังคับให้เขียนออกมาว่าอะไรคือของที่ต้องได้จาก stage นี้
+    var isClosed: Bool {
+        !task.isEmpty && task.allSatisfy(\.isDone)
+    }
+
+    /// วันที่ปิด stage คือวันที่ติ๊ก task ตัวสุดท้าย — ไม่มีคอลัมน์เก็บ
+    var closedOn: Date? {
+        guard isClosed else { return nil }
+        return task.compactMap(\.doneAt).max()
+    }
+
+    var taskCount: Int { task.count }
+    var doneCount: Int { task.count { $0.isDone } }
+
+    /// 0 เมื่อยังไม่มี task — ไม่ใช่ 1 ดูเหตุผลที่ `isClosed`
+    var progress: Double {
+        guard !task.isEmpty else { return 0 }
+        return Double(doneCount) / Double(task.count)
+    }
+
     enum State: Sendable {
         case completed
         case current
         case ahead
     }
 
-    var state: State {
-        if actualEnd != nil { return .completed }
-        if actualStart != nil { return .current }
-        return .ahead
+    /// สามสถานะที่อนุมานจาก task และปฏิทิน ไม่มีคอลัมน์เก็บ
+    ///
+    /// รับ `today` เข้ามาแทนการเรียก `Date()` เอง เพราะหน้าจอตรึงวันนี้ไว้ตอนปรากฏ
+    /// ถ้าฟังก์ชันนี้อ่านนาฬิกาเอง การนับกับสิ่งที่วาดอาจคนละวินาทีกันข้ามเที่ยงคืน
+    func state(today: Date, calendar: Calendar) -> State {
+        if isClosed { return .completed }
+        guard let start = plannedStartDate else { return .ahead }
+        return calendar.startOfDay(for: start) <= calendar.startOfDay(for: today)
+            ? .current
+            : .ahead
     }
+}
+
+/// task หนึ่งอันใน stage
+///
+/// `done_at` เป็น `timestamptz` ไม่ใช่ `date` — ต่างจากวันของ stage โดยตั้งใจ
+/// เพราะมันบันทึก**ช่วงเวลาที่ติ๊ก** ไม่ใช่วันที่คนเลือกเอง การเก็บเวลาไว้ด้วย
+/// ทำให้เรียงลำดับการปิดภายในวันเดียวกันได้ถูกต้อง
+nonisolated struct WorkTaskRow: Codable, Sendable, Identifiable {
+    let id: UUID
+    let title: String
+    let doneAt: Date?
+    let position: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, title, position
+        case doneAt = "done_at"
+    }
+
+    var isDone: Bool { doneAt != nil }
+
+    /// ตัวแปลงขาเขียนของ `done_at` — ขาอ่าน decoder ของ library จัดการเอง
+    /// ห้ามส่ง `Date` ตรง ๆ ให้ encoder ด้วยเหตุผลเดียวกับที่วันของ stage ห้ามส่ง
+    static let instantFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        f.timeZone = TimeZone(secondsFromGMT: 0)
+        return f
+    }()
 }
 
 nonisolated struct WorkRow: Codable, Sendable, Identifiable {
