@@ -543,10 +543,8 @@ struct WorkStageEditorView: View {
 
 /// แก้ stage หนึ่งอัน
 ///
-/// **`Toggle` กับ `DatePicker` ของมันอยู่คนละ `Section` โดยตั้งใจ ห้ามยุบรวมกัน** —
-/// `DatePicker` แบบ compact กินพื้นที่รับสัมผัสล้ำขึ้นไปทับแถวที่อยู่เหนือมันในคอนเทนเนอร์
-/// เดียวกัน ทำให้ `Toggle` กดไม่ติดเลยเมื่อ `DatePicker` ถูกวางมาตั้งแต่เฟรมแรก
-/// เป็นบั๊กที่ compile ผ่าน หน้าจอดูถูกต้อง และเจอได้ด้วยการกดจริงเท่านั้น
+/// **ไม่มีสวิตช์ Started / Finished แล้ว** — stage ปิดเมื่อ task ครบ ไม่ใช่เมื่อกดปุ่ม
+/// ดู `docs/superpowers/specs/2026-08-19-work-round-4-design.md`
 struct WorkStageDetailView: View {
     @Binding var draft: WorkStageDraft
 
@@ -572,16 +570,6 @@ struct WorkStageDetailView: View {
             Section("Planned") {
                 DatePicker("Start", selection: $draft.plannedStart, displayedComponents: .date)
                 DatePicker("End", selection: $draft.plannedEnd, displayedComponents: .date)
-            }
-
-            Section { Toggle("Started", isOn: startedToggle) }
-            if draft.actualStart != nil {
-                Section { dateRow("Started on", date: $draft.actualStart) }
-            }
-
-            Section { Toggle("Finished", isOn: finishedToggle) }
-            if draft.actualEnd != nil {
-                Section { dateRow("Finished on", date: $draft.actualEnd) }
             }
 
             Section("Order") {
@@ -611,40 +599,5 @@ struct WorkStageDetailView: View {
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
         #endif
-    }
-
-    /// toggle ที่แทน `Date?` ได้จริง — ปิดแล้วค่าเป็น nil ซึ่งจะกลายเป็น `null` ในสาย
-    /// ไม่ใช่คีย์ที่หายไปจาก JSON ดู `WorkPayload.swift`
-    private var startedToggle: Binding<Bool> {
-        Binding(
-            get: { draft.actualStart != nil },
-            set: { isOn in
-                draft.actualStart = isOn ? (draft.actualStart ?? draft.plannedStart) : nil
-                // ปิด stage ที่ไม่เคยเปิดคือสภาพที่ฐานข้อมูลปฏิเสธด้วย constraint
-                // ถอนวันเริ่มออกจึงต้องพาวันจบตามไปด้วย ไม่ใช่ปล่อยให้ฟอร์มฟ้องทีหลัง
-                if !isOn { draft.actualEnd = nil }
-            }
-        )
-    }
-
-    private var finishedToggle: Binding<Bool> {
-        Binding(
-            get: { draft.actualEnd != nil },
-            set: { isOn in
-                draft.actualEnd = isOn ? (draft.actualEnd ?? draft.actualStart ?? draft.plannedEnd) : nil
-                if isOn && draft.actualStart == nil { draft.actualStart = draft.plannedStart }
-            }
-        )
-    }
-
-    private func dateRow(_ label: String, date: Binding<Date?>) -> some View {
-        DatePicker(
-            label,
-            selection: Binding(
-                get: { date.wrappedValue ?? Date() },
-                set: { date.wrappedValue = $0 }
-            ),
-            displayedComponents: .date
-        )
     }
 }

@@ -29,7 +29,7 @@ struct WorkCard: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
             } else {
-                WorkStageBar(stages: work.stage)
+                WorkStageBar(stages: work.stage, today: today)
             }
 
             if let stageText = currentStageText {
@@ -73,7 +73,7 @@ struct WorkCard: View {
     /// ทั้งสองกรณีบอกตรง ๆ แทนที่จะปล่อยเป็นช่องว่าง
     private var currentStageText: String? {
         guard !work.stage.isEmpty else { return nil }
-        let names = WorkStageBar.currentStageNames(work.stage)
+        let names = WorkStageBar.currentStageNames(work.stage, today: today, calendar: WorkFilter.calendar)
         if !names.isEmpty { return names.joined(separator: ", ") }
         return WorkFilter.isFinished(work.stage) ? "Finished" : "Not started yet"
     }
@@ -92,12 +92,22 @@ struct WorkCard: View {
                 WorkStageRow(
                     id: UUID(), code: "RU", name: "Requirement · User", position: 1,
                     plannedStart: "2026-01-01", plannedEnd: "2026-02-01",
-                    actualStart: "2026-01-01", actualEnd: "2026-02-01"
+                    baselineStart: "2026-01-01", baselineEnd: "2026-02-01",
+                    task: [
+                        WorkTaskRow(
+                            id: UUID(), title: "ออก proposal",
+                            doneAt: WorkTaskRow.instantFormatter.date(from: "2026-01-20T00:00:00Z"),
+                            position: 1
+                        ),
+                    ]
                 ),
                 WorkStageRow(
                     id: UUID(), code: "RI", name: "Requirement · IT", position: 2,
                     plannedStart: "2026-02-01", plannedEnd: "2026-03-01",
-                    actualStart: "2026-02-01", actualEnd: nil
+                    baselineStart: "2026-02-01", baselineEnd: "2026-03-01",
+                    task: [
+                        WorkTaskRow(id: UUID(), title: "สรุป requirement", doneAt: nil, position: 1),
+                    ]
                 ),
             ]
         ),

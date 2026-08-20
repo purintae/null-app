@@ -111,8 +111,6 @@ nonisolated struct WorkStageDraft: Sendable, Equatable, Identifiable {
         name = row.name
         plannedStart = row.plannedStartDate ?? Date()
         plannedEnd = row.plannedEndDate ?? plannedStart
-        actualStart = row.actualStartDate
-        actualEnd = row.actualEndDate
     }
 
     /// เทียบวันที่ระดับวัน ไม่ใช่ระดับวินาที — `DatePicker` คืนเวลาติดมาด้วยเสมอ
