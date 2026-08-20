@@ -13,11 +13,13 @@
    - `xcodebuild -scheme null-app -destination 'platform=macOS' build`
 4. งานของผู้ใช้อยู่ใน `f_work.work` และ `f_work.stage` และกู้ไม่ได้หลังข้อ 7 —
    export ก่อนด้วย `execute_sql`:
+   `baseline_*` คือแผนตั้งแต่แรกที่ตกลงกัน `planned_*` คือแผนหลังจากมีการเปลี่ยนแปลง
+   มีแต่ `baseline_*` เท่านั้นที่ไม่สามารถสร้างขึ้นมาใหม่ได้จากข้อมูลอื่น
 
    ```sql
    select w.name, w.description, w.requested_by, w.archived_at,
           s.code, s.name as stage_name, s.position,
-          s.planned_start, s.planned_end
+          s.planned_start, s.planned_end, s.baseline_start, s.baseline_end
    from f_work.work w
    left join f_work.stage s on s.work_id = w.id
    order by w.created_at, s.position;
