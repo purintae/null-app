@@ -60,6 +60,9 @@ nonisolated struct WorkDraft: Sendable, Equatable {
 ///
 /// วันที่เป็น `Date` ที่นี่ (ไม่ใช่ `String` แบบ `WorkStageRow`) เพราะ `DatePicker` ต้องการ `Date`
 /// การแปลงกลับเป็น `yyyy-MM-dd` เกิดที่เดียวคือ `WorkPayload.swift`
+///
+/// **ไม่มีวันจริงในนี้แล้ว** — รอบ 4 ตัด `actual_start` / `actual_end` ทิ้งทั้งคู่
+/// เพราะ stage เริ่มตามแผนเสมอ (พอไม่ตามก็แก้แผนแทน) และวันปิดคำนวณจาก task ได้
 nonisolated struct WorkStageDraft: Sendable, Equatable, Identifiable {
     /// id ของแถวจริงเมื่อ `isNew == false` — เมื่อเป็นแถวใหม่ ตัวนี้เป็นแค่ identity ให้ `ForEach`
     /// และถูกทิ้งตอนบันทึก เพราะ id จริงเป็นของที่ฐานข้อมูลแจก
@@ -77,8 +80,6 @@ nonisolated struct WorkStageDraft: Sendable, Equatable, Identifiable {
     var name = ""
     var plannedStart: Date
     var plannedEnd: Date
-    var actualStart: Date?
-    var actualEnd: Date?
 
     static let codeLimit = 8
     static let nameLimit = 80
@@ -127,16 +128,6 @@ nonisolated struct WorkStageDraft: Sendable, Equatable, Identifiable {
 
         if calendar.startOfDay(for: plannedEnd) < calendar.startOfDay(for: plannedStart) {
             return "Planned end is before the planned start"
-        }
-
-        // ปิด stage ที่ไม่เคยเปิด ทำให้ `WorkStageRow.state` อ่านว่า completed ทั้งที่ไม่มีวันเริ่มจริง
-        // ฐานข้อมูลปฏิเสธด้วย constraint เดียวกัน
-        if actualEnd != nil && actualStart == nil {
-            return "Set the actual start before the actual end"
-        }
-        if let start = actualStart, let end = actualEnd,
-           calendar.startOfDay(for: end) < calendar.startOfDay(for: start) {
-            return "Actual end is before the actual start"
         }
 
         return nil

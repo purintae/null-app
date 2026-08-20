@@ -80,8 +80,10 @@ nonisolated struct WorkStagePayload: Encodable, Sendable {
     let position: Int
     let plannedStart: String
     let plannedEnd: String
-    let actualStart: String?
-    let actualEnd: String?
+    /// ส่งเฉพาะตอน insert — แผนแรกเขียนครั้งเดียวแล้วห้ามแตะอีก
+    /// **นี่คือฟิลด์ที่ "ไม่ส่ง" เป็นพฤติกรรมที่ถูกต้องตอน update**
+    let baselineStart: String?
+    let baselineEnd: String?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -89,11 +91,11 @@ nonisolated struct WorkStagePayload: Encodable, Sendable {
         case code, name, position
         case plannedStart = "planned_start"
         case plannedEnd = "planned_end"
-        case actualStart = "actual_start"
-        case actualEnd = "actual_end"
+        case baselineStart = "baseline_start"
+        case baselineEnd = "baseline_end"
     }
 
-    private init(id: UUID?, workID: UUID?, draft: WorkStageDraft, position: Int) {
+    private init(id: UUID?, workID: UUID?, draft: WorkStageDraft, position: Int, baseline: Bool) {
         self.id = id
         self.workID = workID
         code = draft.code.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -101,16 +103,16 @@ nonisolated struct WorkStagePayload: Encodable, Sendable {
         self.position = position
         plannedStart = WorkStageRow.dayFormatter.string(from: draft.plannedStart)
         plannedEnd = WorkStageRow.dayFormatter.string(from: draft.plannedEnd)
-        actualStart = draft.actualStart.map(WorkStageRow.dayFormatter.string(from:))
-        actualEnd = draft.actualEnd.map(WorkStageRow.dayFormatter.string(from:))
+        baselineStart = baseline ? WorkStageRow.dayFormatter.string(from: draft.plannedStart) : nil
+        baselineEnd = baseline ? WorkStageRow.dayFormatter.string(from: draft.plannedEnd) : nil
     }
 
     init(insertFor workID: UUID, draft: WorkStageDraft, position: Int) {
-        self.init(id: nil, workID: workID, draft: draft, position: position)
+        self.init(id: nil, workID: workID, draft: draft, position: position, baseline: true)
     }
 
     init(updateFor id: UUID, draft: WorkStageDraft, position: Int) {
-        self.init(id: id, workID: nil, draft: draft, position: position)
+        self.init(id: id, workID: nil, draft: draft, position: position, baseline: false)
     }
 
     func encode(to encoder: Encoder) throws {
@@ -122,11 +124,60 @@ nonisolated struct WorkStagePayload: Encodable, Sendable {
         try container.encode(position, forKey: .position)
         try container.encode(plannedStart, forKey: .plannedStart)
         try container.encode(plannedEnd, forKey: .plannedEnd)
-        // สองคู่นี้คือหัวใจของไฟล์ — ผู้ใช้ที่ปิด toggle "Finished" กำลังบอกว่า stage นี้ยังไม่จบ
-        // ถ้าคีย์หายไป คอลัมน์จะคาวันจบเดิมไว้ตลอดกาล
-        if let actualStart { try container.encode(actualStart, forKey: .actualStart) }
-        else { try container.encodeNil(forKey: .actualStart) }
-        if let actualEnd { try container.encode(actualEnd, forKey: .actualEnd) }
-        else { try container.encodeNil(forKey: .actualEnd) }
+        // baseline ส่งเฉพาะตอน insert — ตอน update ต้อง**ไม่มีคีย์** เพื่อให้ PostgREST
+        // ไม่แตะคอลัมน์ ต่างจากฟิลด์อื่นในไฟล์นี้ที่ต้องส่งเสมอแม้เป็น null
+        if let baselineStart { try container.encode(baselineStart, forKey: .baselineStart) }
+        if let baselineEnd { try container.encode(baselineEnd, forKey: .baselineEnd) }
+    }
+}
+
+/// task หนึ่งอันที่กำลังจะถูกส่งขึ้น
+///
+/// `done_at` เป็น `timestamptz` จึงส่งเป็น ISO8601 ผ่าน `WorkTaskRow.instantFormatter`
+/// ไม่ใช่ `yyyy-MM-dd` แบบวันของ stage — คนละชนิดคอลัมน์ คนละตัวแปลง
+nonisolated struct WorkTaskPayload: Encodable, Sendable {
+    let stageID: UUID?
+    let title: String?
+    let position: Int?
+    /// `.some(nil)` = ติ๊กออก ต้องส่ง null · `.none` = ไม่แตะคอลัมน์นี้
+    let doneAt: Date??
+
+    enum CodingKeys: String, CodingKey {
+        case title, position
+        case stageID = "stage_id"
+        case doneAt = "done_at"
+    }
+
+    init(insertFor stageID: UUID, title: String, position: Int) {
+        self.stageID = stageID
+        self.title = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.position = position
+        doneAt = nil
+    }
+
+    /// ติ๊กเสร็จหรือติ๊กออก — แตะคอลัมน์เดียว
+    init(done: Date?) {
+        stageID = nil
+        title = nil
+        position = nil
+        doneAt = .some(done)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        if let stageID { try container.encode(stageID, forKey: .stageID) }
+        if let title { try container.encode(title, forKey: .title) }
+        if let position { try container.encode(position, forKey: .position) }
+
+        // หัวใจของไฟล์นี้ — ติ๊ก task ออกต้องส่ง null ไม่ใช่ปล่อยคีย์หายไป
+        // ถ้าคีย์หาย PostgREST จะไม่แตะคอลัมน์ แล้ว task ที่ติ๊กออกจะยังเสร็จอยู่
+        // และ stage ก็จะยังปิดอยู่ทั้งที่ผู้ใช้เพิ่งเปิดมันกลับมา
+        if let doneAt {
+            if let value = doneAt {
+                try container.encode(WorkTaskRow.instantFormatter.string(from: value), forKey: .doneAt)
+            } else {
+                try container.encodeNil(forKey: .doneAt)
+            }
+        }
     }
 }

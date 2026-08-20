@@ -399,7 +399,6 @@ struct WorkStageEditorView: View {
 
     /// ช้ากี่วันนับจากวันจบตามแผน — นิยามเดียวกับที่การ์ดบนหน้ารายการใช้
     private func daysLate(_ draft: WorkStageDraft) -> Int? {
-        guard draft.actualEnd == nil else { return nil }
         let calendar = WorkFilter.calendar
         let end = calendar.startOfDay(for: draft.plannedEnd)
         let now = calendar.startOfDay(for: today)
