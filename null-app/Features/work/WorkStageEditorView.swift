@@ -37,6 +37,9 @@ struct WorkStageEditorView: View {
     /// stage ที่แถบชิปกำลังเลือกอยู่ — รายการ task ข้างล่างเป็นของตัวนี้
     @State private var selectedStage: UUID?
 
+    /// เปิดแถวพิมพ์ task ใหม่ — ตั้งจากปุ่ม New Task บนหัวเรื่อง ส่งลงไปเป็น binding ให้ `WorkTaskListView`
+    @State private var isAddingTask = false
+
     /// stage ที่ผู้ใช้สั่งลบ แต่ยังลบออกจาก `drafts` ไม่ได้จนกว่าหน้าของมันจะถอยออกไปหมด
     /// ดูเหตุผลที่ `onChange(of: editingStage)`
     @State private var pendingRemoval: UUID?
@@ -112,6 +115,19 @@ struct WorkStageEditorView: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding()
+            }
+
+            if store.lastShiftCount > 0 {
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar.badge.clock")
+                    Text("Moved \(store.lastShiftCount) later stage\(store.lastShiftCount == 1 ? "" : "s") to keep the gap.")
+                        .font(.footnote)
+                    Spacer(minLength: 0)
+                    Button("OK") { store.clearLastShift() }
+                        .font(.footnote)
+                }
+                .padding()
+                .background(.quaternary.opacity(0.4))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -324,9 +340,7 @@ struct WorkStageEditorView: View {
 
                 Spacer(minLength: 8)
 
-                Button("New Task") {}
-                    // ยังไม่มีตาราง task — ปิดปุ่มไว้ตรงไปตรงมากว่าปุ่มที่กดแล้วไม่เกิดอะไร
-                    .disabled(true)
+                Button("New Task") { isAddingTask = true }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
             }
@@ -336,14 +350,12 @@ struct WorkStageEditorView: View {
     }
 
     /// แถบความคืบหน้าของ stage ที่เลือก นับจาก task ที่ปิดแล้ว
-    ///
-    /// รอบนี้ยังไม่มีตาราง `task` ตัวเลขจึงเป็น 0/0 ทุกอัน — แถบยังอยู่เพราะมันคือ
-    /// เนื้อหาหลักของหน้านี้เมื่อรอบ 4 มาถึง และเพราะ 0/0 พูดความจริงว่ายังไม่มีอะไรให้ทำ
     @ViewBuilder
     private var progressCard: some View {
         if selectedDraft != nil {
-            let done = 0
-            let total = 0
+            let row = work?.stage.first { $0.id == selectedDraft?.id }
+            let done = row?.doneCount ?? 0
+            let total = row?.taskCount ?? 0
             let ratio = total == 0 ? 0 : Double(done) / Double(total)
 
             VStack(spacing: 10) {
@@ -398,7 +410,15 @@ struct WorkStageEditorView: View {
     }
 
     /// ช้ากี่วันนับจากวันจบตามแผน — นิยามเดียวกับที่การ์ดบนหน้ารายการใช้
+    ///
+    /// **stage ที่ปิดแล้วไม่นับว่า "ช้า" ต่อไปเรื่อย ๆ** — `WorkStageDraft` เก็บแค่วันตามแผน
+    /// ไม่รู้ตัวเองว่าปิดหรือยัง ต้องย้อนไปหาแถวจริงจาก `work?.stage` (แหล่งเดียวกับที่
+    /// การ์ด Progress ใช้) ถ้าข้ามขั้นนี้ไป stage ที่ปิดไปตั้งแต่สัปดาห์ก่อนจะยังโชว์
+    /// "Nd late" และเลขนั้นจะโตขึ้นทุกวันแม้ไม่มีอะไรค้างอยู่แล้วจริง ๆ
     private func daysLate(_ draft: WorkStageDraft) -> Int? {
+        let row = work?.stage.first { $0.id == draft.id }
+        if row?.isClosed == true { return nil }
+
         let calendar = WorkFilter.calendar
         let end = calendar.startOfDay(for: draft.plannedEnd)
         let now = calendar.startOfDay(for: today)
@@ -406,21 +426,32 @@ struct WorkStageEditorView: View {
         return calendar.dateComponents([.day], from: end, to: now).day
     }
 
+    @ViewBuilder
     private var tasks: some View {
-        VStack(spacing: 8) {
-            Spacer()
-
-            Text("No tasks yet")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-
-            Text("Tasks are what close a stage.")
-                .font(.footnote)
-                .foregroundStyle(.tertiary)
-
-            Spacer()
+        if let row = work?.stage.first(where: { $0.id == selectedDraft?.id }) {
+            if row.task.isEmpty && !isAddingTask {
+                VStack(spacing: 8) {
+                    Spacer()
+                    Text("No tasks yet")
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                    Text("A stage closes when all of its tasks are done.")
+                        .font(.footnote)
+                        .foregroundStyle(.tertiary)
+                        .multilineTextAlignment(.center)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 32)
+            } else {
+                WorkTaskListView(
+                    stage: row,
+                    workID: workID,
+                    store: store,
+                    isAdding: $isAddingTask
+                )
+            }
         }
-        .frame(maxWidth: .infinity)
     }
 
     private var menu: some View {
