@@ -26,6 +26,10 @@ final class WorkStore {
     /// ที่ไม่บอกอะไรเลยคือการเปลี่ยนแผนลับหลังผู้ใช้
     private(set) var lastShiftCount = 0
 
+    /// งาน (work) ที่กำลังมีการเลื่อนแผนค้างอยู่ — กันไม่ให้ `shiftClosedStage` ยิงซ้อนสองครั้ง
+    /// สำหรับงานเดียวกัน ดูเหตุผลเต็มที่ `setTask`
+    private var shiftingWorkIDs: Set<UUID> = []
+
     func clearLastShift() { lastShiftCount = 0 }
 
     /// แยก "โหลดแล้วไม่มีงาน" ออกจาก "โหลดไม่สำเร็จ" — สองอย่างนี้หน้าตาเหมือนกันบนจอ
@@ -231,20 +235,24 @@ final class WorkStore {
     }
 
     /// เพิ่ม task ต่อท้ายรายการของ stage นั้น
-    /// `position` มาจากจำนวนที่มีอยู่ ไม่ใช่ช่องให้พิมพ์เลขเอง
+    ///
+    /// `position` มาจาก**เลขตำแหน่งสูงสุดที่มีอยู่จริง + 1** ไม่ใช่จำนวน task ทั้งหมด —
+    /// ลบ task กลางรายการออกไปหนึ่งอันจากสามอัน (position 1,2,3 → เหลือ 1,3) แล้วนับด้วย
+    /// `count` จะได้ `2 + 1 = 3` ซึ่งชนกับ position 3 ที่ยังอยู่จริง ใช้ค่าสูงสุด (`3 + 1 = 4`)
+    /// แทนจึงรับประกันไม่ชนไม่ว่าจะลบตัวไหนออกไปก่อนหน้านี้
     func addTask(_ title: String, to stageID: UUID) async -> Bool {
         let trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return false }
 
-        let existing = works
+        let highestPosition = works
             .flatMap(\.stage)
             .first { $0.id == stageID }?
-            .task.count ?? 0
+            .task.map(\.position).max() ?? 0
 
         do {
             try await Backend.client
                 .schema("f_work").from("task")
-                .insert(WorkTaskPayload(insertFor: stageID, title: trimmed, position: existing + 1))
+                .insert(WorkTaskPayload(insertFor: stageID, title: trimmed, position: highestPosition + 1))
                 .execute()
             saveError = nil
             await load()
@@ -284,7 +292,14 @@ final class WorkStore {
             guard let stageID = owningStage?.id else { return true }
             let isNowClosed = works.flatMap(\.stage).first { $0.id == stageID }?.isClosed ?? false
             if !wasClosed && isNowClosed {
+                // ติ๊ก task สองอันสุดท้ายของ stage เดียวกันพร้อมกันเร็ว ๆ ทำให้ทั้งสองคำเรียก
+                // เห็น `wasClosed == false` ตัวเดียวกันก่อนเขียน (ดูเหตุผลเต็มด้านบน) —
+                // `busyTaskIDs` ในหน้าจอกันการยิง `setTask` ซ้ำ*ต่อ task* แต่ตัวนี้ต้องกันซ้ำ
+                // *ต่องาน* เพราะการเลื่อนแผนกระทบทุก stage ที่เหลือของงานนั้น ไม่ใช่แค่ stage ที่ปิด
+                guard !shiftingWorkIDs.contains(workID) else { return true }
+                shiftingWorkIDs.insert(workID)
                 await shiftClosedStage(stageID, in: workID)
+                shiftingWorkIDs.remove(workID)
             }
             return true
         } catch {

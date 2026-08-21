@@ -79,7 +79,12 @@ struct WorkTaskListView: View {
             }
         }
         .listStyle(.plain)
-        .onChange(of: isAdding) { _, adding in
+        // `initial: true` เพราะ stage ที่ไม่มี task เลยมาถึงจอนี้พร้อม `isAdding` เป็น true
+        // ตั้งแต่ตอนสร้าง (หน้าแม่สลับจาก placeholder มาเป็น view นี้โดยตรงพร้อมค่านั้นเลย
+        // ไม่ได้ค่อยเปลี่ยนทีหลัง) `onChange` แบบเดิมไม่ยิงให้ค่าเริ่มต้น ปุ่ม New Task
+        // บน stage ว่างจึงโชว์แถวพิมพ์ขึ้นมาแต่คีย์บอร์ดไม่เปิด — เส้นทางบังคับที่ทุกคนต้องผ่าน
+        // เพราะ stage ปิดไม่ได้จนกว่าจะมี task อย่างน้อยหนึ่งอัน
+        .onChange(of: isAdding, initial: true) { _, adding in
             if adding { isTypingNew = true }
         }
         .onChange(of: isTypingNew) { _, focused in

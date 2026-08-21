@@ -156,6 +156,10 @@ struct WorkStageEditorView: View {
         .navigationDestination(item: $editingDetails) { route in
             WorkFormView(workID: route.workID, store: store)
         }
+        .onChange(of: selectedStage) { _, _ in
+            // แถวพิมพ์ task ค้างอยู่คือของ stage เก่า ปัดไป stage อื่นแล้วมันไม่ควรตามไปด้วย
+            isAddingTask = false
+        }
         .navigationDestination(item: $editingStage) { id in
             let index = drafts.firstIndex { $0.id == id }
 
@@ -186,17 +190,101 @@ struct WorkStageEditorView: View {
             persist()
         }
         .task {
+            // ตรึงแค่ "วันนี้" ที่นี่ — การซิงก์ drafts เองย้ายไปอยู่ที่ onChange(of: stageSignature)
+            // ข้างล่าง เพราะมันต้องรันซ้ำได้ทุกครั้งที่ store เปลี่ยน ไม่ใช่แค่ครั้งแรกที่จอปรากฏ
             guard !didLoad else { return }
-            let knownCodes = Set(store.stageTypes.map(\.code))
             today = Date()
-            drafts = (work?.stage ?? []).map { WorkStageDraft($0, knownCodes: knownCodes) }
-            selectedStage = drafts.first?.id
             didLoad = true
+        }
+        // ค่าที่ห่อ id + วันของทุก stage ไว้ในสตริงเดียว — เปลี่ยนทุกครั้งที่การเลื่อนแผนอัตโนมัติ
+        // (`WorkStore.shiftClosedStage`) หรือการบันทึกของหน้านี้เองเขียนอะไรใหม่ขึ้นเซิร์ฟเวอร์
+        // `initial: true` ทำให้ก้อนนี้รันตอนจอปรากฏด้วย แทนที่ `.task` เดิมที่โหลดครั้งเดียว
+        .onChange(of: stageSignature, initial: true) { _, _ in
+            syncDrafts()
+            if selectedStage == nil { selectedStage = drafts.first?.id }
         }
         .onDisappear {
             store.clearSaveError()
             store.clearLastShift()
         }
+    }
+
+    /// ลายเซ็นของชุด stage บนเซิร์ฟเวอร์ตอนนี้ — id คู่กับวันตามแผนของทุกอัน เรียงตามตำแหน่ง
+    ///
+    /// `.onChange(of:)` ต้องการค่าที่เทียบได้ ไม่อยากให้ `WorkRow`/`WorkStageRow` ทั้งชุดต้องเป็น
+    /// `Equatable` แค่เพื่อจุดนี้จุดเดียว จึงบีบเหลือสตริงที่มีแค่สิ่งที่ `drafts` สนใจจริง ๆ
+    /// (id, planned_start, planned_end) — การติ๊ก task ก็ทำให้ `store.works` เปลี่ยนเหมือนกัน
+    /// แต่ไม่แตะสามอย่างนี้ จึงไม่ทำให้ค่านี้เปลี่ยนและไม่ยิง sync โดยไม่จำเป็น
+    private var stageSignature: String {
+        (work?.stage ?? [])
+            .sorted { $0.position < $1.position }
+            .map { "\($0.id)|\($0.plannedStart)|\($0.plannedEnd)" }
+            .joined(separator: ",")
+    }
+
+    /// ทำให้ `drafts` ตรงกับแถวจริงบนเซิร์ฟเวอร์เสมอ แทนที่จะโหลดจาก `work?.stage` แค่ครั้งเดียว
+    /// ตอนจอเปิด (ของเดิม) — ของเดิมพังตรงที่ `WorkStore.shiftClosedStage` เป็นนักเขียนคนที่สอง
+    /// ของ `planned_start`/`planned_end` และไม่มีใครมาบอก `drafts` ว่ามันเปลี่ยนไปแล้ว
+    /// การ persist() ครั้งถัดไปจึงเอาวันเก่าที่ค้างใน `drafts` เขียนทับของใหม่กลับไปเงียบ ๆ
+    ///
+    /// **กติกาการซิงก์ ต่อ draft หนึ่งตัว:**
+    /// - `isNew == false` (เคยบันทึกแล้ว) และยังหาแถวด้วย id เจอ → ใช้ค่าจากเซิร์ฟเวอร์เสมอ
+    ///   ปลอดภัยเพราะช่องพิมพ์ (Code/Name/Date) ผูกกับ `drafts` ตรง ๆ ผ่าน `binding(for:)` —
+    ///   สิ่งที่ผู้ใช้เห็นบนจอ **คือ** `drafts` ปัจจุบัน การกดปุ่มใด ๆ ในหน้าแก้ stage
+    ///   (`move`, ปิดหน้าแล้ว `persist()`) ส่งค่านั้นขึ้นเซิร์ฟเวอร์ก่อนเสมอ ค่าที่ซิงก์กลับมา
+    ///   จึงไม่มีทางต่างจากสิ่งที่ผู้ใช้เพิ่งพิมพ์ นอกจากมันถูกเขียนทับจริงจากที่อื่น
+    ///   (เช่นการเลื่อนแผน) ซึ่งเป็นกรณีที่ *ต้องการ* ให้ซิงก์ทับ
+    /// - `isNew == true` (ยังไม่เคยบันทึก) และยังไม่มีแถวจริงคู่กัน → คงของเดิมไว้ทั้งหมด ไม่แตะ
+    ///   เพราะนี่คือ stage ที่ผู้ใช้เพิ่งเพิ่ม (เช่น "Other" ที่ยังพิมพ์รหัส/ชื่อไม่เสร็จ) ไม่มี
+    ///   ทางที่มันจะมีแถวจริงคู่กันได้ตราบใดที่ยังไม่ผ่าน `persist()` สำเร็จ
+    /// - `isNew == true` แต่ตอนนี้มีแถวจริงเกิดขึ้นแล้ว (บันทึกไปสำเร็จระหว่างที่ผู้ใช้ยังไม่ทัน
+    ///   เห็น) → "เลื่อนขั้น" ให้ id ของแถวจริงแทนที่ id ชั่วคราวที่แอปมินต์เอง จับคู่ตามลำดับ
+    ///   ที่เพิ่มเข้ามา เพราะ `saveStages` ใส่ position ตามลำดับใน `drafts` ตอนนั้นเสมอ
+    ///   นี่คือส่วนที่แก้ I6: `selectedStage` ที่เคยชี้ไปยัง id ชั่วคราวจะตามไปหา id จริง
+    ///   แทนที่จะค้างชี้ไปยังแถวที่ไม่มีอยู่แล้วตลอด session
+    private func syncDrafts() {
+        let knownCodes = Set(store.stageTypes.map(\.code))
+        let rows = (work?.stage ?? []).sorted { $0.position < $1.position }
+        let rowsByID = Dictionary(uniqueKeysWithValues: rows.map { ($0.id, $0) })
+
+        var matched: [WorkStageDraft] = []
+        var pendingNew: [WorkStageDraft] = []
+        var matchedRowIDs = Set<UUID>()
+
+        for draft in drafts {
+            if !draft.isNew, let row = rowsByID[draft.id] {
+                matched.append(WorkStageDraft(row, knownCodes: knownCodes))
+                matchedRowIDs.insert(row.id)
+            } else if draft.isNew {
+                pendingNew.append(draft)
+            }
+            // เข้าเงื่อนไขไหนไม่ได้เลย = เคยเป็นแถวจริงแต่หายจากเซิร์ฟเวอร์แล้ว (ลบไปจากที่อื่น) — ตัดทิ้ง
+        }
+
+        let unclaimedRows = rows.filter { !matchedRowIDs.contains($0.id) }
+
+        var remap: [UUID: UUID] = [:]
+        var promoted: [WorkStageDraft] = []
+        var stillPending: [WorkStageDraft] = []
+
+        for (index, draft) in pendingNew.enumerated() {
+            if index < unclaimedRows.count {
+                let row = unclaimedRows[index]
+                promoted.append(WorkStageDraft(row, knownCodes: knownCodes))
+                remap[draft.id] = row.id
+            } else {
+                stillPending.append(draft)
+            }
+        }
+
+        let leftoverRows = unclaimedRows.dropFirst(pendingNew.count)
+            .map { WorkStageDraft($0, knownCodes: knownCodes) }
+
+        drafts = matched + promoted + stillPending + leftoverRows
+
+        if let id = selectedStage, let newID = remap[id] { selectedStage = newID }
+        if let id = editingStage, let newID = remap[id] { editingStage = newID }
+        if let id = pendingRemoval, let newID = remap[id] { pendingRemoval = newID }
     }
 
     /// ถอยไปหาอันแรกเสมอเมื่อตัวที่เลือกไว้ไม่มีอยู่แล้ว (เพิ่งถูกลบ หรือยังไม่ทันตั้งค่า)
@@ -239,16 +327,28 @@ struct WorkStageEditorView: View {
                 HStack(spacing: 0) {
                     ForEach(drafts) { draft in
                         let isOn = draft.id == selectedDraft?.id
+                        let isClosed = isStageClosed(draft)
 
                         Button {
                             withAnimation(.snappy) { selectedStage = draft.id }
                         } label: {
                             VStack(spacing: 6) {
-                                Text(displayCode(draft))
-                                    .font(.subheadline)
-                                    .fontWeight(isOn ? .semibold : .regular)
-                                    .foregroundStyle(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
-                                    .lineLimit(1)
+                                // เครื่องหมายถูกบอกว่า stage นี้ปิดแล้ว แยกจากตัวที่ยังไม่ปิด
+                                // ด้วย**รูปทรง** ไม่ใช่สี ไล่ตามสัญลักษณ์แบบเดียวกับ WorkStageBar —
+                                // สีคงที่ (`.secondary`) ไม่ว่าจะถูกเลือกอยู่หรือไม่ เพื่อไม่ให้ไป
+                                // แย่งมิติสีกับเส้นใต้ที่บอกว่า "กำลังเลือกอยู่" อยู่แล้ว
+                                HStack(spacing: 3) {
+                                    if isClosed {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.caption2)
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(displayCode(draft))
+                                        .font(.subheadline)
+                                        .fontWeight(isOn ? .semibold : .regular)
+                                        .foregroundStyle(isOn ? AnyShapeStyle(.primary) : AnyShapeStyle(.secondary))
+                                        .lineLimit(1)
+                                }
 
                                 // เส้นใต้กินความกว้างเท่าแท็บเสมอ ใช้ `.clear` แทนการเอาออก
                                 // ไม่งั้นความสูงของแถบจะกระตุกทุกครั้งที่เปลี่ยนแท็บ
@@ -263,7 +363,7 @@ struct WorkStageEditorView: View {
                         }
                         .buttonStyle(.plain)
                         .id(draft.id)
-                        .accessibilityLabel(displayName(draft))
+                        .accessibilityLabel(isClosed ? "\(displayName(draft)), closed" : displayName(draft))
                         .accessibilityAddTraits(isOn ? [.isSelected] : [])
                     }
                 }
@@ -359,7 +459,9 @@ struct WorkStageEditorView: View {
             let row = work?.stage.first { $0.id == selectedDraft?.id }
             let done = row?.doneCount ?? 0
             let total = row?.taskCount ?? 0
-            let ratio = total == 0 ? 0 : Double(done) / Double(total)
+            // ใช้สูตรของ `WorkStageRow.progress` ตัวเดียว ไม่คำนวณอัตราส่วนซ้ำที่นี่ —
+            // สองสูตรที่ทำหน้าที่เดียวกันคือสองสูตรที่วันหนึ่งจะเพี้ยนออกจากกัน
+            let ratio = row?.progress ?? 0
 
             VStack(spacing: 10) {
                 HStack {
@@ -412,40 +514,30 @@ struct WorkStageEditorView: View {
         return draft.code.isEmpty ? "New stage" : draft.code
     }
 
-    /// ช้ากี่วันนับจากวันจบตามแผน — นิยามเดียวกับที่การ์ดบนหน้ารายการใช้
-    ///
-    /// **stage ที่ปิดแล้วไม่นับว่า "ช้า" ต่อไปเรื่อย ๆ** — `WorkStageDraft` เก็บแค่วันตามแผน
-    /// ไม่รู้ตัวเองว่าปิดหรือยัง ต้องย้อนไปหาแถวจริงจาก `work?.stage` (แหล่งเดียวกับที่
-    /// การ์ด Progress ใช้) ถ้าข้ามขั้นนี้ไป stage ที่ปิดไปตั้งแต่สัปดาห์ก่อนจะยังโชว์
-    /// "Nd late" และเลขนั้นจะโตขึ้นทุกวันแม้ไม่มีอะไรค้างอยู่แล้วจริง ๆ
-    private func daysLate(_ draft: WorkStageDraft) -> Int? {
-        let row = work?.stage.first { $0.id == draft.id }
-        if row?.isClosed == true { return nil }
+    /// stage ปิดแล้วหรือยัง — `WorkStageDraft` เองไม่รู้ ต้องย้อนไปหาแถวจริงจาก `work?.stage`
+    /// เหมือนที่ `daysLate` ทำ (แหล่งเดียวกัน หนึ่งสูตร)
+    private func isStageClosed(_ draft: WorkStageDraft) -> Bool {
+        work?.stage.first { $0.id == draft.id }?.isClosed ?? false
+    }
 
-        let calendar = WorkFilter.calendar
-        let end = calendar.startOfDay(for: draft.plannedEnd)
-        let now = calendar.startOfDay(for: today)
-        guard end < now else { return nil }
-        return calendar.dateComponents([.day], from: end, to: now).day
+    /// ช้ากี่วัน — เฉพาะ stage ที่เป็น "ตัวบล็อก" ตัวเดียวของงานนี้ตาม `WorkFilter.blockingStage`
+    ///
+    /// **ต้องใช้ตัวเดียวกับที่ `WorkCard`/`WorkFilter.daysLate` ใช้ ห้ามคำนวณเอง** — เดิมฟังก์ชันนี้
+    /// คืนค่าให้ทุก stage ที่ยังไม่ปิดและเลยวัน ซึ่งขัดกับกติกา Freeze: งานหนึ่งชิ้นมี stage
+    /// ที่ "ช้า" ได้ไม่เกินหนึ่งอัน ส่วนที่เหลือแค่รอคิว ถ้าตัวหน้านี้มีนิยามของตัวเอง
+    /// การ์ดบนหน้ารายการกับแท็บในหน้านี้จะบอกเลขคนละตัวสำหรับงานเดียวกัน
+    private func daysLate(_ draft: WorkStageDraft) -> Int? {
+        guard let stages = work?.stage,
+              WorkFilter.blockingStage(stages, today: today, calendar: WorkFilter.calendar)?.id == draft.id
+        else { return nil }
+        return WorkFilter.daysLate(stages, today: today, calendar: WorkFilter.calendar)
     }
 
     @ViewBuilder
     private var tasks: some View {
         if let row = work?.stage.first(where: { $0.id == selectedDraft?.id }) {
             if row.task.isEmpty && !isAddingTask {
-                VStack(spacing: 8) {
-                    Spacer()
-                    Text("No tasks yet")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                    Text("A stage closes when all of its tasks are done.")
-                        .font(.footnote)
-                        .foregroundStyle(.tertiary)
-                        .multilineTextAlignment(.center)
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 32)
+                noTasksPlaceholder
             } else {
                 WorkTaskListView(
                     stage: row,
@@ -455,7 +547,29 @@ struct WorkStageEditorView: View {
                 )
                 .id(row.id)
             }
+        } else {
+            // `selectedDraft` ชี้ไปยัง stage ที่หาแถวจริงไม่เจอ — ปกติ `syncDrafts()` กัน
+            // สภาพนี้ไว้แล้วด้วยการเลื่อนขั้น id ชั่วคราวให้ตามแถวจริงเสมอ (ดู I6) แต่ถ้ามีทาง
+            // ที่หลุดมาได้จริง ๆ ให้โชว์หน้าว่างที่บอกทางไปต่อ ดีกว่า `EmptyView` ที่ทำให้ปุ่ม
+            // New Task ตายและปัดเปลี่ยน stage ไม่ได้ไปตลอด session (เพราะ gesture ผูกอยู่กับ view นี้)
+            noTasksPlaceholder
         }
+    }
+
+    private var noTasksPlaceholder: some View {
+        VStack(spacing: 8) {
+            Spacer()
+            Text("No tasks yet")
+                .font(.subheadline)
+                .foregroundStyle(.secondary)
+            Text("A stage closes when all of its tasks are done.")
+                .font(.footnote)
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+            Spacer()
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 32)
     }
 
     private var menu: some View {

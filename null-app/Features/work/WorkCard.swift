@@ -69,13 +69,18 @@ struct WorkCard: View {
     /// ใช้ `WorkStageBar.currentStageNames` ตัวเดียวกับที่ VoiceOver ใช้ ไม่คำนวณซ้ำที่นี่
     ///
     /// งานที่ไม่มี stage เลยไม่มีข้อความนี้ (การ์ดใช้คำเชิญใส่ timeline แทนอยู่แล้ว) งานที่มี stage
-    /// แต่ไม่มีอันไหน "ปัจจุบัน" อยู่ในสองแบบ: จบครบทุก stage แล้ว หรือยังไม่เริ่มเลยสักอัน —
-    /// ทั้งสองกรณีบอกตรง ๆ แทนที่จะปล่อยเป็นช่องว่าง
+    /// แต่ไม่มีอันไหน "ปัจจุบัน" อยู่ในสามแบบ: จบครบทุก stage แล้ว, ยังไม่เริ่มเลยสักอัน,
+    /// หรือปิด stage แรก ๆ ไปแล้วแต่ stage ถัดไปยังไม่ถึงวันเริ่ม — แบบหลังนี้พบบ่อยขึ้นตั้งแต่
+    /// รอบ 4 เพราะปิดช้าเมื่อไหร่ วันเริ่มของ stage ถัดไปก็เลื่อนตามออกไปด้วย (ดู
+    /// `WorkStore.shiftClosedStage`) งานแบบนี้ไม่ใช่ "ยังไม่เริ่ม" — มันเริ่มไปแล้วและปิด
+    /// stage หนึ่งไปแล้วด้วยซ้ำ แค่กำลังรอคิว stage ถัดไป ทั้งสามกรณีบอกตรง ๆ แทนที่จะปล่อยเป็นช่องว่าง
     private var currentStageText: String? {
         guard !work.stage.isEmpty else { return nil }
         let names = WorkStageBar.currentStageNames(work.stage, today: today, calendar: WorkFilter.calendar)
         if !names.isEmpty { return names.joined(separator: ", ") }
-        return WorkFilter.isFinished(work.stage) ? "Finished" : "Not started yet"
+        if WorkFilter.isFinished(work.stage) { return "Finished" }
+        if work.stage.contains(where: \.isClosed) { return "Between stages" }
+        return "Not started yet"
     }
 }
 
