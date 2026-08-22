@@ -23,6 +23,7 @@ import SwiftUI
 /// ตามน้ำหนักให้ช่องที่เหลือ (ดู `chipWidths(available:)`)
 struct WorkStageBar: View {
     let stages: [WorkStageRow]
+    let today: Date
 
     private let spacing: CGFloat = 3
     private let barHeight: CGFloat = 22
@@ -51,20 +52,21 @@ struct WorkStageBar: View {
 
             HStack(spacing: spacing) {
                 ForEach(Array(zip(stages, widths)), id: \.0.id) { stage, width in
+                    let state = stage.state(today: today, calendar: WorkFilter.calendar)
                     Text(stage.code)
                         .font(.caption2)
                         .lineLimit(1)
                         .minimumScaleFactor(0.7)
                         .frame(width: width)
                         .frame(height: barHeight)
-                        .background(background(for: stage.state), in: RoundedRectangle(cornerRadius: 4))
+                        .background(background(for: state), in: RoundedRectangle(cornerRadius: 4))
                         .overlay {
-                            if case .ahead = stage.state {
+                            if case .ahead = state {
                                 RoundedRectangle(cornerRadius: 4)
                                     .strokeBorder(.tertiary, lineWidth: 1)
                             }
                         }
-                        .foregroundStyle(foreground(for: stage.state))
+                        .foregroundStyle(foreground(for: state))
                 }
             }
         }
@@ -161,14 +163,14 @@ struct WorkStageBar: View {
     ///
     /// จุดเดียวที่คำนวณ "ชื่อ stage ปัจจุบันคืออะไร" — ทั้ง `accessibilitySummary` ข้างล่างและ
     /// `WorkCard` เรียกฟังก์ชันนี้แทนที่จะคำนวณเอง เพื่อไม่ให้มีตรรกะสองชุดที่ต้องคอยให้ตรงกันเอง
-    static func currentStageNames(_ stages: [WorkStageRow]) -> [String] {
-        stages.filter { $0.state == .current }.map(\.name)
+    static func currentStageNames(_ stages: [WorkStageRow], today: Date, calendar: Calendar) -> [String] {
+        stages.filter { $0.state(today: today, calendar: calendar) == .current }.map(\.name)
     }
 
     /// VoiceOver อ่านชื่อ stage สามสิบตัวติดกันไม่มีประโยชน์ — สรุปให้แทน
     private var accessibilitySummary: String {
-        let done = stages.filter { $0.state == .completed }.count
-        let current = Self.currentStageNames(stages)
+        let done = stages.filter { $0.state(today: today, calendar: WorkFilter.calendar) == .completed }.count
+        let current = Self.currentStageNames(stages, today: today, calendar: WorkFilter.calendar)
         if current.isEmpty {
             return "\(done) of \(stages.count) stages done"
         }

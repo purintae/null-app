@@ -40,10 +40,15 @@ nonisolated enum WorkFilter: String, CaseIterable, Sendable, Identifiable {
 
         switch self {
         case .active:
-            return stages.contains { $0.actualStart != nil } && !Self.isFinished(stages)
+            // เริ่มแล้ว = ถึงวันเริ่มของ stage แรกแล้ว ไม่ใช่ = มีใครกดปุ่ม
+            // สเปกรอบ 4 ตัด actual_start ทิ้งเพราะงานเริ่มตามแผนเสมอ
+            // พอเริ่มไม่ได้ตามแผน สิ่งที่เกิดคือเลื่อน timeline ไม่ใช่บันทึกส่วนต่าง
+            guard !Self.isFinished(stages) else { return false }
+            guard let first = stages.compactMap(\.plannedStartDate).min() else { return false }
+            return calendar.startOfDay(for: first) <= calendar.startOfDay(for: today)
 
         case .overdue:
-            return Self.overdueStages(stages, today: today, calendar: calendar).isEmpty == false
+            return Self.blockingStage(stages, today: today, calendar: calendar) != nil
 
         case .dueThisMonth:
             guard !Self.isFinished(stages) else { return false }
@@ -51,42 +56,67 @@ nonisolated enum WorkFilter: String, CaseIterable, Sendable, Identifiable {
             return calendar.isDate(last, equalTo: today, toGranularity: .month)
 
         case .startingSoon:
-            guard stages.allSatisfy({ $0.actualStart == nil }) else { return false }
+            guard !Self.isFinished(stages) else { return false }
             guard let first = stages.compactMap(\.plannedStartDate).min() else { return false }
+            // ยังไม่ถึงวันเริ่ม — งานที่เลยวันเริ่มมาแล้วอยู่ใน Active ไม่ใช่ที่นี่
+            guard calendar.startOfDay(for: first) > calendar.startOfDay(for: today) else { return false }
             guard let limit = calendar.date(byAdding: .day, value: Self.startingSoonWindow, to: today)
             else { return false }
-            // ไม่มีขอบล่าง — งานที่เลยวันเริ่มตามแผนแล้วแต่ยังไม่เริ่ม ต้องยังโผล่ที่นี่
-            // ไม่งั้นมันจะหลุดจากทั้งสี่ใบและหายไปจากสายตาพอดีตอนที่ควรถูกมองที่สุด
             return first <= limit
         }
     }
 
-    /// stage ที่เลยกำหนดจบมาแล้วแต่ยังไม่ปิด
-    static func overdueStages(
+    /// stage ที่บล็อกงานอยู่ — ตัวแรกตามลำดับที่ยังไม่ปิดและเลย `planned_end` มาแล้ว
+    ///
+    /// **มีได้ไม่เกินหนึ่งอันต่องานหนึ่งชิ้น และนี่คือทั้งหมดของ Freeze**
+    /// ถ้า RU ค้างเพราะ user ยังไม่ออก proposal อีกสี่ stage ข้างหลังก็เลยวันตามแผนไปด้วย
+    /// การนับทั้งห้าเป็น overdue คือการรายงานว่ามีปัญหาห้าจุดทั้งที่มีจุดเดียว —
+    /// ตัวเลขที่เกินความจริงบ่อย ๆ คือตัวเลขที่คนเลิกเชื่อทั้งใบ
+    /// ส่วนอีกสี่อันไม่ได้ช้า มันรอ ซึ่งไม่ใช่ความผิดของใคร
+    static func blockingStage(
         _ stages: [WorkStageRow],
         today: Date,
         calendar: Calendar
-    ) -> [WorkStageRow] {
-        stages.filter { stage in
-            guard stage.actualEnd == nil, let end = stage.plannedEndDate else { return false }
-            return calendar.startOfDay(for: end) < calendar.startOfDay(for: today)
-        }
+    ) -> WorkStageRow? {
+        stages
+            .sorted { $0.position < $1.position }
+            .first { stage in
+                guard !stage.isClosed, let end = stage.plannedEndDate else { return false }
+                return calendar.startOfDay(for: end) < calendar.startOfDay(for: today)
+            }
     }
 
-    /// ช้ากี่วัน นับจาก stage ที่เลยกำหนดมานานที่สุด
-    /// คืน nil เมื่อไม่มีอะไรเลยกำหนด — ต่างจาก 0 ซึ่งจะแปลว่า "เลยกำหนดวันนี้พอดี"
+    /// ช้ากี่วัน นับจาก stage ที่บล็อกอยู่ตัวเดียว ไม่ใช่ตัวที่เลยกำหนดมานานที่สุด
+    /// คืน nil เมื่อไม่มีอะไรบล็อก — ต่างจาก 0 ซึ่งจะแปลว่า "เลยกำหนดวันนี้พอดี"
     static func daysLate(_ stages: [WorkStageRow], today: Date, calendar: Calendar) -> Int? {
-        let overdue = overdueStages(stages, today: today, calendar: calendar)
-        guard let earliest = overdue.compactMap(\.plannedEndDate).min() else { return nil }
+        guard let blocking = blockingStage(stages, today: today, calendar: calendar),
+              let end = blocking.plannedEndDate
+        else { return nil }
+
         return calendar.dateComponents(
             [.day],
-            from: calendar.startOfDay(for: earliest),
+            from: calendar.startOfDay(for: end),
             to: calendar.startOfDay(for: today)
         ).day
     }
 
     /// ทุก stage ปิดครบ = งานเสร็จ ไม่ต้องมีคอลัมน์ status
     static func isFinished(_ stages: [WorkStageRow]) -> Bool {
-        !stages.isEmpty && stages.allSatisfy { $0.actualEnd != nil }
+        !stages.isEmpty && stages.allSatisfy(\.isClosed)
     }
+
+    /// ปฏิทินตัวเดียวของทั้งฟีเจอร์ ตรึงที่ UTC ให้ตรงกับ `WorkStageRow.dayFormatter`
+    ///
+    /// วันของ stage เป็น Postgres `date` ซึ่งไม่มีโซนเวลาติดมา การอ่านและการเขียนจึงต้อง
+    /// ตีความมันด้วยโซนเดียวกันเสมอ ไม่ใช่โซนของเครื่องผู้ใช้ — ไม่งั้นคนที่กรุงเทพฯ (UTC+7)
+    /// เลือก `2026-09-01` บน `DatePicker` จะได้ Date ที่เท่ากับ `2026-08-31T17:00Z`
+    /// แล้ว formatter ที่เป็น UTC จะเขียนลงฐานข้อมูลว่า `2026-08-31` — ผิดไปหนึ่งวันทุกครั้ง
+    /// โดยไม่มี error ใด ๆ
+    ///
+    /// ผลที่ตามมา: view ที่มี `DatePicker` ต้องใส่ `.environment(\.timeZone, ...)` ให้ตรงกับตัวนี้ด้วย
+    static let calendar: Calendar = {
+        var c = Calendar(identifier: .gregorian)
+        c.timeZone = TimeZone(secondsFromGMT: 0)!
+        return c
+    }()
 }

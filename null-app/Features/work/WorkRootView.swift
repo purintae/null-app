@@ -20,11 +20,11 @@ struct WorkRootView: View {
     /// ไม่งั้นการนับกับตัวเลขบนการ์ดอาจคนละวินาทีกันข้ามเที่ยงคืน
     @State private var today = Date()
 
-    private var calendar: Calendar {
-        var c = Calendar(identifier: .gregorian)
-        c.timeZone = TimeZone(secondsFromGMT: 0)!
-        return c
-    }
+    @State private var isCreating = false
+
+    /// Work ที่กำลังจะเปิดหน้าแก้ — ปลายทางถูกสร้างตอนตัวนี้ไม่ใช่ nil เท่านั้น
+    /// จึงยัง lazy เหมือน `NavigationLink(value:)` โดยไม่ต้องพึ่งการลงทะเบียนตามชนิด
+    @State private var editingWork: WorkRoute?
 
     init(userID: UUID) {
         self.userID = userID
@@ -41,6 +41,9 @@ struct WorkRootView: View {
             .padding(.horizontal)
             .padding(.top, 12)
         }
+        .navigationDestination(item: $editingWork) { route in
+            WorkStageEditorView(workID: route.id, store: store)
+        }
         .navigationTitle("Work")
         #if !os(macOS)
         .navigationBarTitleDisplayMode(.inline)
@@ -48,11 +51,13 @@ struct WorkRootView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
-                    // รอบหน้า: เปิดหน้าเพิ่มงาน
+                    isCreating = true
                 } label: {
                     Image(systemName: "plus")
                 }
-                .disabled(true)
+                // ยังไม่มี Work Type ให้เลือกก็สร้างไม่ได้ เพราะเป็นช่องบังคับ
+                // ปิดปุ่มไว้ตรงไปตรงมากว่าเปิดฟอร์มที่กด Save ไม่ได้
+                .disabled(store.types.isEmpty)
                 .accessibilityLabel("Add work")
             }
         }
@@ -61,27 +66,32 @@ struct WorkRootView: View {
             today = Date()
             await store.load()
         }
+        .sheet(isPresented: $isCreating) {
+            NavigationStack {
+                WorkFormView(workID: nil, store: store)
+            }
+        }
     }
 
     /// งานที่ผ่านตัวกรองประเภทแล้ว — ทั้งตัวนับสี่ใบและรายการข้างล่างต้องอ่านจากตัวนี้ตัวเดียว
     /// ไม่ใช่กรองประเภทแยกกันคนละที่ ไม่งั้นวันหนึ่งจะมีที่ใดที่หนึ่งลืมเช็ค activeType
     /// แล้วตัวนับกับรายการจะไม่ตรงกันตอนเลือก chip ประเภทพร้อมกับใบสรุป
     /// (ตัวนับต้องนับเฉพาะในประเภทที่กำลังกรองอยู่ ไม่ใช่นับทั้งหมดแล้วเอาไปโชว์ข้างใบที่ถูกจำกัดประเภท)
-    private var typeFilteredItems: [WorkItemRow] {
-        guard let activeType else { return store.items }
-        return store.items.filter { $0.typeCode == activeType }
+    private var typeFilteredWorks: [WorkRow] {
+        guard let activeType else { return store.works }
+        return store.works.filter { $0.typeCode == activeType }
     }
 
-    /// งานที่ผ่านทั้งตัวกรองประเภทและตัวกรองสถานะ — ต่อจาก typeFilteredItems เสมอ
-    private var visibleItems: [WorkItemRow] {
-        typeFilteredItems.filter { item in
+    /// งานที่ผ่านทั้งตัวกรองประเภทและตัวกรองสถานะ — ต่อจาก typeFilteredWorks เสมอ
+    private var visibleWorks: [WorkRow] {
+        typeFilteredWorks.filter { work in
             guard let activeFilter else { return true }
-            return activeFilter.matches(item.stage, today: today, calendar: calendar)
+            return activeFilter.matches(work.stage, today: today, calendar: WorkFilter.calendar)
         }
     }
 
     private func count(_ filter: WorkFilter) -> Int {
-        typeFilteredItems.filter { filter.matches($0.stage, today: today, calendar: calendar) }.count
+        typeFilteredWorks.filter { filter.matches($0.stage, today: today, calendar: WorkFilter.calendar) }.count
     }
 
     private var summary: some View {
@@ -170,12 +180,12 @@ struct WorkRootView: View {
                 systemImage: "exclamationmark.triangle",
                 description: Text("Pull down to try again.")
             )
-        } else if visibleItems.isEmpty {
+        } else if visibleWorks.isEmpty {
             ContentUnavailableView(
-                store.items.isEmpty ? "No work yet" : "Nothing matches",
+                store.works.isEmpty ? "No work yet" : "Nothing matches",
                 systemImage: "briefcase",
                 description: Text(
-                    store.items.isEmpty
+                    store.works.isEmpty
                         ? "Your work will show up here."
                         : "Tap the selected filter again to clear it."
                 )
@@ -183,8 +193,15 @@ struct WorkRootView: View {
             .padding(.top, 24)
         } else {
             LazyVStack(spacing: 10) {
-                ForEach(visibleItems) { item in
-                    WorkCard(item: item, today: today)
+                ForEach(visibleWorks) { work in
+                    // ปุ่มที่ตั้ง state แทน `NavigationLink(value:)` — ปลายทางยังถูกสร้าง
+                    // ตอนกดจริงเท่านั้น ไม่ใช่ตอนวาดทุกใบแบบ `NavigationLink(destination:)`
+                    Button {
+                        editingWork = WorkRoute(id: work.id)
+                    } label: {
+                        WorkCard(work: work, today: today)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
